@@ -111,6 +111,13 @@ const exportLimiter = rateLimit({
     message: { success: false, error: 'Too many export requests. Please try again later.' }
 });
 
+// Rate limiter for /api/block
+const blockLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute window
+    max: 5, // limit each IP to 5 block requests per windowMs
+    message: { success: false, error: 'Too many block requests. Please try again later.' }
+});
+
 app.post('/api/export', exportLimiter, (req, res) => {
     const format = req.body.format || 'json';
     const exportPath = config.dashboard?.export?.exportPath || './exports';
@@ -144,7 +151,7 @@ app.post('/api/export', exportLimiter, (req, res) => {
     }
 });
 
-app.post('/api/block', (req, res) => {
+app.post('/api/block', blockLimiter, (req, res) => {
     const { ip } = req.body;
 
     // Add to blocklist in config
