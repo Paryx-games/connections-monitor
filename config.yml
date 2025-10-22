@@ -2,6 +2,10 @@
 # This is used to look up geographic locations of remote IP addresses
 ipToken: "abc123cba"
 
+# DNS Resolution - resolve IP addresses to hostnames
+# Note: This may slow down the monitoring and increase network overhead
+resolveDNS: false
+
 # How often to refresh the connection list (in milliseconds)
 # Lower values = more frequent updates but higher CPU and API usage
 # Default: 2000 (2 seconds)
@@ -73,3 +77,78 @@ truncateOverflow: true
 # Order of columns from left to right
 # Must match the column names defined in the 'columns' section above
 columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'Geo', 'Bytes', 'Age']
+
+# Connection statistics and monitoring features
+monitoring:
+  # Show connection statistics (total TCP/UDP connections, bandwidth usage)
+  showStats: true
+  
+  # Show top talkers (processes/IPs with most connections or bandwidth)
+  showTopTalkers: true
+  topTalkersCount: 5  # How many top talkers to display
+  
+  # Track historical data for graphs
+  trackHistory: true
+  historyRetention: 604800000  # How long to keep history in ms (default: 7 days)
+
+# Alert system with webhook support
+alerts:
+  enabled: false
+  
+  # Webhooks to send alerts to (supports Discord, Slack, generic JSON)
+  webhooks: []
+    # - url: "https://discord.com/api/webhooks/..."
+    # - url: "https://hooks.slack.com/services/..."
+  
+  # Alert conditions
+  conditions:
+    # Alert on suspicious ports
+    suspiciousPorts: [23, 135, 139, 445, 3389]
+    
+    # Alert on new foreign connections
+    newForeignConnections: true
+    
+    # Alert when connection count exceeds threshold
+    maxConnections: 500
+    
+    # Alert on high bandwidth usage (bytes per second)
+    maxBandwidth: 10485760  # 10 MB/s
+
+# IP filtering
+ipFiltering:
+  enabled: false
+  
+  # Allowlist - only show these IPs (empty = show all)
+  allowlist: []
+  
+  # Blocklist - hide these IPs
+  blocklist: []
+
+# Connection filtering
+connectionFiltering:
+  enabled: false
+  
+  # Filter by protocol
+  protocols: []  # ['TCP', 'UDP'] or leave empty for all
+  
+  # Filter by port ranges
+  ports: []  # [80, 443, 8080] or leave empty for all
+  
+  # Filter by process names
+  processes: []  # ['chrome.exe', 'firefox.exe'] or leave empty for all
+  
+  # Filter by country codes
+  countries: []  # ['US', 'GB', 'CA'] or leave empty for all
+
+# Dashboard settings
+dashboard:
+  enabled: false  # Enable Electron dashboard
+  port: 3000  # Port for the internal web server
+  
+  # Export settings
+  export:
+    enabled: true
+    formats: ['csv', 'json']  # Available export formats
+    autoExport: false  # Automatically export at intervals
+    exportInterval: 3600000  # Auto-export interval in ms (default: 1 hour)
+    exportPath: './exports'  # Where to save exports
