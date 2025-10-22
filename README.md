@@ -2,6 +2,12 @@
 
 A Node.js application that monitors and displays active TCP and UDP network connections on Windows systems in real-time. It provides detailed information including process names, geographic locations of remote IPs, connection states, and more.
 
+> [!NOTE]
+> We accept Pull Requests and Issues so long as they follow our guidelines.
+
+> [!IMPORTANT]
+> It may take a few days to implement or merge pull requests due to business or other issues.
+
 ## Features
 
 - **Real-time Monitoring**: Continuously scans and displays network connections every 2 seconds (configurable).
@@ -23,11 +29,17 @@ Choose one of the following installation methods:
 
 ### Option 1: MSI Installer (Recommended for Windows)
 
+> [!TIP]
+> This is recommended for Windows as it will do everything for you.
+
 1. Download the latest MSI installer from the [Releases](https://github.com/yourusername/connections-monitor/releases) page.
 2. Run the MSI file and follow the installation wizard.
 3. Launch the application from the Start menu or desktop shortcut.
 
-### Option 2: Zip Folder Download
+### Option 2: Zip Folder Download (not recommended)
+
+> [!WARNING]
+> This is not recommended unless you know what you are doing.
 
 1. Download the latest ZIP file from the [Releases](https://github.com/yourusername/connections-monitor/releases) page.
 2. Extract the ZIP file to a folder of your choice.
@@ -36,9 +48,12 @@ Choose one of the following installation methods:
 
 ### Option 3: Git Clone (For Developers)
 
+> [!CAUTION]
+> We will not provide help if you build from the source. Only use this if you are actively contributing to our project.
+
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/connections-monitor.git
+   git clone https://github.com/Paryx-games/connections-monitor.git
    cd connections-monitor
    ```
 
