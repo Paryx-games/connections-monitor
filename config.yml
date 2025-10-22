@@ -1,0 +1,64 @@
+# Get your IP token from https://ipinfo.io/account/token
+# Sign up if needed, this will access Geo info
+ipToken: "abc123cba"
+
+# Refresh interval in milliseconds (default: 2000)
+# Smaller is faster but uses more CPU
+refreshInterval: 2000
+
+# Highlighted ports: object mapping ports to custom hex colors
+highlightedPorts:
+  '21': '#FFFF00'       # FTP - Yellow
+  '22': '#FFA500'       # SSH - Orange
+  '23': '#FF0000'       # Telnet - Red
+  '25': '#800080'       # SMTP - Purple
+  '53': '#00FFFF'       # DNS - Cyan
+  '80': '#FFFFFF'       # HTTP - White
+  '110': '#FFFF00'      # POP3 - Yellow
+  '135': '#00FFFF'      # RPC - Cyan
+  '139': '#FFFF00'      # NetBIOS - Yellow
+  '143': '#800080'      # IMAP - Purple
+  '443': '#008000'      # HTTPS - Green
+  '445': '#800080'      # SMB - Purple
+  '993': '#FFFF00'      # IMAPS - Yellow
+  '995': '#FFFF00'      # POP3S - Yellow
+  '3389': '#FF0000'     # RDP - Red
+
+# Colors for TCP/UDP states: object mapping states to color names
+colors:
+  tcp:
+    listening: 'green'
+    established: 'yellow'
+    close_wait: 'red'
+    time_wait: 'magenta'
+    other: 'white'
+  udp: 'cyan'
+
+# Columns to display: object with column names as keys and true/false to enable
+columns:
+  Proto: true
+  Local: true
+  Port: true
+  Foreign: true
+  State: true
+  PID: true
+  Process: true
+  Geo: true
+  Bytes: true
+  Age: true
+
+# Column widths: object mapping column names to widths
+columnWidths:
+  Proto: 5
+  Local: 22
+  Port: 6
+  Foreign: 22
+  State: 12
+  PID: 6
+  Process: 25
+  Geo: 8
+  Bytes: 8
+  Age: 6
+
+# Column order: array specifying the order of columns (must match columns array)
+columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'Geo', 'Bytes', 'Age']
