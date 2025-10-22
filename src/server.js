@@ -6,6 +6,7 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -103,7 +104,14 @@ app.post('/api/filter', (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/export', (req, res) => {
+// Rate limiter for /api/export
+const exportLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute window
+    max: 5, // limit each IP to 5 export requests per windowMs
+    message: { success: false, error: 'Too many export requests. Please try again later.' }
+});
+
+app.post('/api/export', exportLimiter, (req, res) => {
     const format = req.body.format || 'json';
     const exportPath = config.dashboard?.export?.exportPath || './exports';
 
