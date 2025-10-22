@@ -19,79 +19,87 @@ A Node.js application that monitors and displays active TCP and UDP network conn
 
 ## Prerequisites
 
-- **Node.js** (version 14 or higher)
-- **Windows** with PowerShell (for network data retrieval)
+- **Node.js** (version 18 or higher)
+- **Windows** with PowerShell 5.1+
 - **IPinfo.io Account**: Required for geographic data (free tier available)
+
+---
 
 ## Installation
 
-Choose one of the following installation methods:
+### For End Users: Download the Installer EXE
 
-### Option 1: MSI Installer (Recommended for Windows)
+1. **Download** `ConnectionsMonitor-Installer.exe` from the [Releases](https://github.com/Paryx-games/connections-monitor/releases) page
+2. **Double-click** the installer
+3. **Follow the wizard** to configure and install
+4. **Launch** from Start Menu!
 
-> [!TIP]
-> This is recommended for Windows as it will do everything for you.
+**No administrator rights required!** ✅
 
-1. Download the latest MSI installer from the [Releases](https://github.com/yourusername/connections-monitor/releases) page.
-2. Run the MSI file and follow the installation wizard.
-3. Launch the application from the Start menu or desktop shortcut.
+---
 
-### Option 2: Zip Folder Download (not recommended)
+### For Developers: Build From Source
 
-> [!WARNING]
-> This is not recommended unless you know what you are doing.
+#### Quick Install:
 
-1. Download the latest ZIP file from the [Releases](https://github.com/yourusername/connections-monitor/releases) page.
-2. Extract the ZIP file to a folder of your choice.
-3. Open a command prompt or PowerShell in the extracted folder.
-4. Proceed to the "Configuration" section below.
+```powershell
+# Clone the repository
+git clone https://github.com/Paryx-games/connections-monitor.git
+cd connections-monitor
 
-### Option 3: Git Clone (For Developers)
+# Run the installer
+npm run install-app
+```
 
-> [!CAUTION]
-> We will not provide help if you build from the source. Only use this if you are actively contributing to our project.
+#### Manual Install:
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Paryx-games/connections-monitor.git
-   cd connections-monitor
-   ```
+```powershell
+# Install dependencies
+npm install
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+# Configure
+# Edit config.yml and add your IPinfo.io token
 
-3. Proceed to the "Configuration" section below.
+# Run
+npm start
+```
 
-## Configuration
+---
 
-1. Open `config.yml` in a text editor.
-2. Get your IPinfo token from [https://ipinfo.io/account/token](https://ipinfo.io/account/token) (free tier available).
-3. Replace `"abc123cba"` with your actual token.
-4. Optionally, adjust other settings like `refreshInterval`, `highlightedPorts`, `colors`, `columns`, etc.
+## Building the Installer
 
-## Running the Application
+Want to build the installer EXE yourself?
 
-- **If installed via MSI**: Launch from the Start menu or desktop shortcut.
-- **If downloaded as ZIP or cloned**: Run `node scanner.js` in the application folder.
+```powershell
+# Builds: ConnectionsMonitor-Installer.exe
+npm run build-installer
+```
 
-The output will display a real-time table of network connections.
+See [BUILD_EXE_INSTRUCTIONS.md](BUILD_EXE_INSTRUCTIONS.md) for detailed instructions.
+
+**Requirements:**
+- PS2EXE PowerShell module (automatically installed by build script)
+
+---
 
 ## Configuration
 
 Edit `config.yml` to customize settings:
 
 ```yaml
-# this is a rough representation, visit config.yml for all the settings
-ipToken: "abc123cba"
+# Get your token from: https://ipinfo.io/signup (free tier: 50k requests/month)
+ipToken: "your_token_here"
 
+# How often to scan connections (milliseconds)
 refreshInterval: 2000
 
+# Highlight risky ports
 highlightedPorts:
-  '3389': '#FF0000'
-  '445': '#800080'
+  '3389': '#FF0000'  # RDP - Red
+  '445': '#800080'   # SMB - Purple
+  '22': '#FFA500'    # SSH - Orange
 
+# Color scheme
 colors:
   tcp:
     listening: 'green'
@@ -99,9 +107,10 @@ colors:
     other: 'white'
   udp: 'cyan'
 
-
+# Display options
 logErrors: true
 
+# Columns to show
 columns:
   Proto: true
   Local: true
@@ -114,6 +123,7 @@ columns:
   Bytes: true
   Age: true
 
+# Column widths
 columnWidths:
   Proto: 5
   Local: 22
@@ -126,45 +136,171 @@ columnWidths:
   Bytes: 8
   Age: 6
 
+# Column order
 columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'Geo', 'Bytes', 'Age']
 ```
 
-## Usage
+---
 
-Run the application:
+## Running the Application
 
-```bash
-node scanner.js
+### If Installed via EXE Installer:
+- Open **Start Menu** → Search for **"Connections Monitor"**
+- Click to launch
+
+### If Running from Source:
+```powershell
+npm start
 ```
 
-The output will display a table with the following columns:
-- **Proto**: Protocol (TCP or UDP)
-- **Local**: Local address and port
-- **Foreign**: Remote address and port (or '-' for UDP)
-- **State**: Connection state (TCP only)
-- **PID**: Process ID
-- **Process**: Process name
-- **Geo**: Geographic location (country)
-- **Bytes**: Data transferred (placeholder, currently 0)
-- **Age**: Time since connection was first seen
+Or directly:
+```powershell
+node src/scanner.js
+```
 
-## Color Coding
+---
 
-- **Risky Ports**: Highlighted in colors (e.g., RDP in red, SMB in magenta)
+## Usage
+
+The output displays a real-time table with the following columns:
+
+| Column | Description |
+|--------|-------------|
+| **Proto** | Protocol (TCP or UDP) |
+| **Local** | Local address and port |
+| **Foreign** | Remote address and port |
+| **State** | Connection state (TCP only) |
+| **PID** | Process ID |
+| **Process** | Process name |
+| **Geo** | Geographic location (country) |
+| **Bytes** | Data transferred |
+| **Age** | Time since connection started |
+
+### Color Coding
+
+- **Risky Ports**: Highlighted in colors (RDP=red, SMB=purple, SSH=orange)
 - **TCP States**:
   - Listening: Green
   - Established: Yellow
   - Others: White
 - **UDP**: Cyan
 
+---
+
+## Installation Locations
+
+When installed via the EXE installer, files are placed in your user profile:
+
+- **Application:** `%LOCALAPPDATA%\ConnectionsMonitor`
+- **Config:** `%LOCALAPPDATA%\ConnectionsMonitor\config.yml`
+- **Start Menu:** User Start Menu → Connections Monitor
+
+**Full path:** `C:\Users\YourName\AppData\Local\ConnectionsMonitor`
+
+---
+
+## Uninstallation
+
+### If Installed via EXE:
+1. Delete the application folder:
+   ```powershell
+   Remove-Item -Path "$env:LOCALAPPDATA\ConnectionsMonitor" -Recurse -Force
+   ```
+2. Delete Start Menu shortcut:
+   ```powershell
+   Remove-Item -Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Connections Monitor" -Recurse -Force
+   ```
+
+### If Running from Source:
+Just delete the repository folder.
+
+---
+
+## Getting IPinfo.io Token
+
+1. Visit: https://ipinfo.io/signup
+2. Sign up (free account)
+3. Copy your token from the dashboard
+4. Add to `config.yml`:
+   ```yaml
+   ipToken: "your_token_here"
+   ```
+
+**Free tier:** 50,000 requests/month
+
+---
+
+## Troubleshooting
+
+### "Node.js not found"
+Install Node.js from: https://nodejs.org/
+- Choose "Install for current user only" (no admin needed)
+- Make sure "Add to PATH" is checked
+
+### "Cannot run scripts"
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+### "npm not found"
+Close and reopen PowerShell after installing Node.js.
+
+### "Application won't start"
+Check Node.js version (must be 18+):
+```powershell
+node --version
+```
+
+---
+
+## Development
+
+### Project Structure
+
+```
+connections-monitor/
+├── src/
+│   └── scanner.js          # Main application
+├── install.ps1             # Installer script
+├── build-installer-exe.ps1 # Builds the EXE installer
+├── config.yml              # Configuration file
+├── package.json            # Dependencies
+└── README.md               # This file
+```
+
+### Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm start` | Run the application |
+| `npm run install-app` | Run the installer wizard |
+| `npm run build-installer` | Build the EXE installer |
+
+---
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+---
+
 ## Disclaimer
 
 This tool is for educational and monitoring purposes only. Ensure you have permission to monitor network activity on the systems you use it on.
+
+---
+
+## Support
+
+- **Issues:** https://github.com/Paryx-games/connections-monitor/issues
+- **Discussions:** https://github.com/Paryx-games/connections-monitor/discussions
+
+---
+
+**Enjoy monitoring your network connections! 🚀**

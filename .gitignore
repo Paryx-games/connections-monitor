@@ -1,1 +1,5 @@
 node_modules/
+ConnectionsMonitor-Installer.exe
+
+# this is for creating the installer. internal use only.
+building/
