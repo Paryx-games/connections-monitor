@@ -1,99 +1,110 @@
 # Connections Monitor
 
-A Node.js application that monitors and displays active TCP and UDP network connections on Windows systems in real-time. It provides detailed information including process names, geographic locations of remote IPs, connection states, and more.
+Real-time network connection monitoring for Windows. See what's connecting to your system, where it's coming from, and which programs are responsible.
 
-> [!NOTE]
-> We accept pull requests and issues so long as they follow our guidelines.
+> [!IMPORTANT]  
+> This tool is for authorized network monitoring only. Do not use for unauthorized surveillance, hacking, or illegal activities. Always respect privacy laws and obtain proper authorization before monitoring network traffic.
 
-> [!IMPORTANT]
-> It may take a few days to implement or merge pull requests due to maintainers being busy or other important issues or priorities.
+---
 
-## Features
+## What It Does
 
-- **Real-time Monitoring**: Continuously scans and displays network connections every 2 seconds (configurable).
-- **TCP & UDP Support**: Monitors both TCP connections and UDP endpoints.
-- **Process Information**: Shows the process name associated with each connection.
-- **Geographic Data**: Fetches country information for remote IP addresses using IPinfo.io.
-- **Color-coded Output**: Highlights risky ports and connection states for easy identification.
-- **Configurable**: Uses a YAML config file for settings like API tokens and refresh intervals.
+- Monitors active TCP and UDP connections in real-time
+- Shows which programs are making connections
+- Displays geographic location of remote IPs
+- Color-codes ports and states to highlight potential risks
+- Tracks how long connections have been active
+- Fully configurable through a simple YAML file
 
-## Prerequisites
+---
 
-- **Node.js** (version 18 or higher)
-- **Windows** with PowerShell 5.1+
-- **IPinfo.io Account**: Required for geographic data (free tier available)
+## Requirements
+
+- Node.js v18 or higher
+- Windows with PowerShell 5.1+
+- IPinfo.io account (free tier available)
+
+> [!TIP]  
+> Download Node.js from [nodejs.org](https://nodejs.org/). The LTS version is recommended.
 
 ---
 
 ## Installation
 
-### Quick Start
+### For Regular Users
 
-1. **Download** the latest release from [Releases](https://github.com/Paryx-games/connections-monitor/releases)
-2. **Unzip** the files to any folder
-3. **Configure** your IPinfo.io token in `config.yml`
-4. **Run** the application (see below)
+1. Download the latest release from [Releases](https://github.com/Paryx-games/connections-monitor/releases)
+2. Extract to any folder
+3. Get your free API token from [ipinfo.io/signup](https://ipinfo.io/signup)
+4. Open `config.yml` and add your token
+5. Run `run.bat`
 
-### For Developers: Clone from Source
+> [!NOTE]  
+> The first run takes a moment to fetch geolocation data for your active connections.
 
-> [!CAUTION]
+### For Developers
 
-```powershell
-# Clone the repository
+> [!WARNING]  
+> Only clone from source if you plan to contribute or customize the code. Regular users should download releases.
+
+```bash
 git clone https://github.com/Paryx-games/connections-monitor.git
 cd connections-monitor
-```
-> [!TIP]
-> If you're cloning this repo, ensure you've installed Node.js first and have all dependencies installed.
-
-```powershell
-# Install dependencies
 npm install
 ```
 
-**Configure**
+Edit `config.yml` with your IPinfo token, then run:
 
-Edit config.yml and add your IPinfo.io token
-
-**Run the script**
-```
+```bash
 npm start
 ```
+
+> [!CAUTION]  
+> When contributing, do not modify `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, or `run.bat`. See our [contribution guidelines](CONTRIBUTING.md) for details.
 
 ---
 
 ## Configuration
 
-Edit [`config.yml`](CONFIG.YML) to customize settings:
+Edit `config.yml` to customize behavior:
+
+### API Token
 
 ```yaml
-# Get your IP token from https://ipinfo.io/account/token
-# Sign up if needed, this will access Geo info
-ipToken: "abc123cba"
+ipToken: "your_token_here"
+```
 
-# Refresh interval in milliseconds (default: 2000)
-# Smaller is faster but uses more CPU
+Get your token from [ipinfo.io/account/token](https://ipinfo.io/account/token). Free accounts get 50,000 requests per month.
+
+### Refresh Rate
+
+```yaml
 refreshInterval: 2000
+```
 
-# Highlighted ports: object mapping ports to custom hex colors
+How often to update in milliseconds. Lower values = faster updates but more CPU usage.
+
+> [!TIP]  
+> Set to 5000 (5 seconds) on slower systems or to reduce API usage.
+
+### Port Highlighting
+
+Highlight specific ports with custom colors:
+
+```yaml
 highlightedPorts:
-  '21': '#FFFF00'       # FTP - Yellow
-  '22': '#FFA500'       # SSH - Orange
-  '23': '#FF0000'       # Telnet - Red
-  '25': '#800080'       # SMTP - Purple
-  '53': '#00FFFF'       # DNS - Cyan
-  '80': '#FFFFFF'       # HTTP - White
-  '110': '#FFFF00'      # POP3 - Yellow
-  '135': '#00FFFF'      # RPC - Cyan
-  '139': '#FFFF00'      # NetBIOS - Yellow
-  '143': '#800080'      # IMAP - Purple
-  '443': '#008000'      # HTTPS - Green
-  '445': '#800080'      # SMB - Purple
-  '993': '#FFFF00'      # IMAPS - Yellow
-  '995': '#FFFF00'      # POP3S - Yellow
-  '3389': '#FF0000'     # RDP - Red
+  '22': '#FFA500'     # SSH - Orange
+  '23': '#FF0000'     # Telnet - Red
+  '443': '#008000'    # HTTPS - Green
+  '3389': '#FF0000'   # RDP - Red
+```
 
-# Colors for TCP/UDP states: object mapping states to color names
+> [!NOTE]  
+> Port highlights override state-based colors. Use red for high-risk ports.
+
+### State Colors
+
+```yaml
 colors:
   tcp:
     listening: 'green'
@@ -102,8 +113,13 @@ colors:
     time_wait: 'magenta'
     other: 'white'
   udp: 'cyan'
+```
 
-# Columns to display: object with column names as keys and true/false to enable
+### Columns
+
+Toggle columns on/off:
+
+```yaml
 columns:
   Proto: true
   Local: true
@@ -115,116 +131,129 @@ columns:
   Geo: true
   Bytes: true
   Age: true
+```
 
-# Column widths: object mapping column names to widths
+Adjust column widths:
+
+```yaml
 columnWidths:
-  Proto: 5
-  Local: 22
-  Port: 6
-  Foreign: 22
-  State: 12
-  PID: 6
-  Process: 25
-  Geo: 8
-  Bytes: 8
-  Age: 6
-
-# Column order: array specifying the order of columns (must match columns array)
-columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'Geo', 'Bytes', 'Age']
+  Process: 35
+  Local: 25
 ```
 
----
+Change column order:
 
-## Running the Application
-
-### Option 1: Using the batch file
-```
-run.bat
+```yaml
+columnOrder: ['Proto', 'Port', 'Process', 'Foreign', 'State', 'Geo', 'Age']
 ```
 
-### Option 2: Using Node directly
-```
-node src/scanner.js
-```
-
-### Option 3: Using npm (if cloned from source)
-```powershell
-npm start
-```
-
-Or directly:
-```powershell
-node src/scanner.js
-```
+> [!TIP]  
+> Disable the Bytes column if you don't need it. It currently shows 0B as a placeholder.
 
 ---
 
 ## Usage
 
-The output displays a real-time table with the following columns:
+### Starting the Monitor
+
+```bash
+# Windows batch file (easiest)
+run.bat
+
+# Direct Node.js
+node src/scanner.js
+
+# NPM script (if installed from source)
+npm start
+```
+
+### Understanding Output
+
+The monitor displays a table with these columns:
 
 | Column | Description |
 |--------|-------------|
-| **Proto** | Protocol (TCP or UDP) |
-| **Local** | Local address and port |
-| **Foreign** | Remote address and port |
-| **State** | Connection state (TCP only) |
-| **PID** | Process ID |
-| **Process** | Process name |
-| **Geo** | Geographic location (country) |
-| **Bytes** | Data transferred |
-| **Age** | Time since connection started |
+| Proto | Protocol (TCP or UDP) |
+| Local | Your computer's address and port |
+| Port | Local port number |
+| Foreign | Remote address and port |
+| State | Connection status (TCP only) |
+| PID | Process ID |
+| Process | Program name |
+| Geo | Country code of remote IP |
+| Bytes | Data transferred (placeholder) |
+| Age | How long the connection has been active |
 
 ### Color Coding
 
-- **Highlighted Ports**: Highlighted in colors (RDP=red, SMB=purple, SSH=orange)
-- **TCP States**:
-  - Listening: Green
-  - Established: Yellow
-  - Others: White
-- **UDP**: Cyan
+Colors help you spot issues quickly:
 
----
+- **Green**: Listening ports (your computer waiting for connections)
+- **Yellow**: Established connections (currently active)
+- **Red**: High-risk ports or closing connections
+- **Magenta**: Time-wait state
+- **Orange**: SSH connections
+- **Purple**: Mail or SMB ports
+- **Cyan**: All UDP traffic
 
-## Getting IPinfo.io Token
-
-1. Visit: https://ipinfo.io/signup
-2. Sign up (free account)
-3. Copy your token from the dashboard
-4. Add to `config.yml`:
-   ```yaml
-   ipToken: "abc123cba" # replace with your actual token
-   ```
-
-**Free tier:** 50,000 requests/month, no credit card required
-
-**Paid tier:** Unlimited requests, but not required for free usage
+> [!NOTE]  
+> Red connections should be investigated if unexpected. They often indicate risky services like RDP or Telnet.
 
 ---
 
 ## Troubleshooting
 
-### "Node.js not found"
-Install Node.js from: https://nodejs.org/
-- Choose "Install for current user only" (no admin needed)
-- Make sure "Add to PATH" is checked
+### Node.js Not Found
 
-### "node is not recognized"
-Close and reopen your terminal after installing Node.js, or restart your computer.
+```bash
+node --version
+```
 
-### "Cannot run scripts"
+If this fails, install Node.js from [nodejs.org](https://nodejs.org/). Make sure "Add to PATH" is checked during installation.
+
+> [!TIP]  
+> Restart your terminal or computer after installing Node.js.
+
+### Cannot Run Scripts
+
+If PowerShell blocks the script:
+
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-### "npm not found"
-Close and reopen PowerShell after installing Node.js.
+> [!WARNING]  
+> Only bypass execution policy for trusted scripts. This setting resets when you close PowerShell.
 
-### "Application won't start"
-Check Node.js version (must be 18+):
-```powershell
+### Application Won't Start
+
+Check Node.js version:
+
+```bash
 node --version
 ```
+
+Must be v18 or higher. If correct, verify dependencies:
+
+```bash
+npm install
+```
+
+Check that `config.yml` has a valid IPinfo token.
+
+### Unknown Values
+
+**Process shows "Unknown"**: The process may have ended, or you need admin rights to see it.
+
+**Geo shows "Unknown"**: The IP is private/local, or you've hit IPinfo rate limits.
+
+### Too Many API Requests
+
+> [!CAUTION]  
+> Free IPinfo accounts allow 50k requests/month. If you hit the limit:
+> - Increase `refreshInterval` to 5000+ milliseconds
+> - Monitor during specific time periods only
+> - Consider a paid plan for unlimited requests
 
 ---
 
@@ -232,54 +261,86 @@ node --version
 
 ### Project Structure
 
-> [!WARNING]
-> Please keep the structure like this to keep the scripts working correctly.
-
 ```
 connections-monitor/
 ├── src/
-│   └── scanner.js          # You can put other files here
-├── run.bat                 # Batch file to run the app
-├── config.yml              # Configuration file
+│   └── scanner.js          # Main application
+├── run.bat                 # Windows launcher
+├── config.yml              # Configuration
 ├── package.json            # Dependencies
+├── LICENSE                 # MIT License
+├── CONTRIBUTING.md         # How to contribute
+├── CODE_OF_CONDUCT.md      # Community standards
 └── README.md               # This file
 ```
 
-> [!IMPORTANT]
-> DO NOT change [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [run.bat](run.bat), or [README.md](README.md)
+> [!IMPORTANT]  
+> Keep this structure intact for scripts to work correctly.
 
-### Scripts
+### Available Commands
 
 | Command | Description |
 |---------|-------------|
 | `npm start` | Run the application |
 | `npm install` | Install dependencies |
+| `node src/scanner.js` | Run directly |
+
+### Contributing
+
+> [!TIP]  
+> Before contributing:
+> 1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+> 2. Review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+> 3. Test changes thoroughly on Windows
+> 4. Keep dependencies updated in `package.json`
 
 ---
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+We welcome pull requests and issues! Here's how:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make your changes
+4. Test thoroughly
+5. Commit: `git commit -m 'Add my feature'`
+6. Push: `git push origin feature/my-feature`
+7. Open a Pull Request
+
+> [!NOTE]  
+> Pull requests may take a few days to review. Maintainers balance this project with other priorities.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. Do not attempt to change the license.
+MIT License - see [LICENSE](LICENSE) for details.
 
----
-
-## Disclaimer
-
-This tool is for educational and monitoring purposes only. Ensure you have permission to monitor network activity on the systems you use it on.
+> [!CAUTION]  
+> Do not modify or remove the license. It protects both contributors and users.
 
 ---
 
 ## Support
 
-- **Issues:** https://github.com/Paryx-games/connections-monitor/issues
-- **Discussions:** https://github.com/Paryx-games/connections-monitor/discussions
+- **Bug Reports**: [Open an Issue for "Bug Report"](https://github.com/Paryx-games/connections-monitor/issues)
+- **Feature Requests**: [Open an Issue for "Feature Request"](https://github.com/Paryx-games/connections-monitor/issues)
+- **Questions**: Check this README first, then ask in Issues
+
+> [!TIP]  
+> Search existing issues before opening new ones to avoid duplicates.
 
 ---
 
-**Enjoy monitoring your network connections!**
+## Credits
+
+- Built by [Paryx](https://github.com/Paryx-games)
+- Geolocation data from [IPinfo.io](https://ipinfo.io)
+- Terminal colors by [chalk](https://github.com/chalk/chalk)
+
+---
+
+**Happy monitoring. Stay secure.**
