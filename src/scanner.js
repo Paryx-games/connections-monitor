@@ -15,6 +15,9 @@ const historicalData = [];
 const dnsCache = new Map();
 const portKnockDetector = new Map();
 
+// First run flag - load everything silently before showing interface
+let firstRun = true;
+
 // Global stats
 let stats = {
   totalTCP: 0,
@@ -533,8 +536,8 @@ async function getConnections() {
         timestamp: Date.now()
       };
 
-      // Clear screen and show header (only if dashboard is not enabled)
-      if (!config.dashboard?.enabled) {
+      // Clear screen and show header (only if not first run and dashboard is not enabled)
+      if (!config.dashboard?.enabled && !firstRun) {
         console.clear();
         console.log(buildHeader());
       }
@@ -553,8 +556,8 @@ async function getConnections() {
           if (!seenConnections.has(key)) {
             seenConnections.set(key, Date.now());
 
-            // Check for new foreign connection alert
-            if (config.alerts?.enabled && config.alerts.conditions?.newForeignConnections && foreign !== '-') {
+            // Check for new foreign connection alert (skip on first run)
+            if (!firstRun && config.alerts?.enabled && config.alerts.conditions?.newForeignConnections && foreign !== '-') {
               sendAlert('New Foreign Connection', { proto, foreign, pid });
             }
           }
@@ -578,8 +581,8 @@ async function getConnections() {
           // VPN detection
           const isVPN = detectVPN(procName, foreign);
 
-          // Port knock detection
-          if (foreignIp && detectPortKnock(foreignIp, conn.LocalPort)) {
+          // Port knock detection (skip on first run)
+          if (!firstRun && foreignIp && detectPortKnock(foreignIp, conn.LocalPort)) {
             console.log(chalk.red.bold(`[!] Port knock detected from ${foreignIp}`));
           }
 
@@ -602,20 +605,25 @@ async function getConnections() {
 
           displayedConnections.push(connectionData);
 
-          console.log(formatLine(connectionData));
+          // Only display if not first run
+          if (!firstRun) {
+            console.log(formatLine(connectionData));
+          }
         } catch (connError) {
           // Silently skip connection errors
         }
       }
 
-      // Display stats and top talkers at the bottom (only if dashboard is not enabled)
-      if (!config.dashboard?.enabled) {
+      // Display stats and top talkers at the bottom (only if not first run and dashboard is not enabled)
+      if (!config.dashboard?.enabled && !firstRun) {
         displayStats();
         displayTopTalkers();
       }
 
-      // Check alerts
-      checkAlerts(displayedConnections);
+      // Check alerts (skip on first run)
+      if (!firstRun) {
+        checkAlerts(displayedConnections);
+      }
 
       // Save historical data
       saveHistoricalData(displayedConnections);
@@ -624,18 +632,29 @@ async function getConnections() {
       if (config.dashboard?.enabled) {
         sendToDashboard(displayedConnections);
       }
+
+      // After first run completes, clear screen and enable normal display
+      if (firstRun) {
+        firstRun = false;
+        if (!config.dashboard?.enabled) {
+          console.clear();
+          console.log(chalk.green.bold('✓ Loaded. Monitoring connections...\n'));
+        }
+      }
     });
   });
 }
 
 // Initialize
 if (!config.dashboard?.enabled) {
-  console.clear();
-  console.log(buildHeader());
+  console.log(chalk.yellow('Loading connections and resolving hostnames...'));
 } else {
   console.log('Dashboard mode enabled. Data will be sent to dashboard server.');
   console.log(`Dashboard URL: http://localhost:${config.dashboard.port}`);
 }
+
+// Run first scan immediately to load data
+getConnections();
 
 // Keeps the display fresh by calling getConnections() every few seconds.
 // The refresh rate comes from your config file (default is 2 seconds).
