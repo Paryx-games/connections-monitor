@@ -14,6 +14,16 @@ Real-time network connection monitoring for Windows. See what's connecting to yo
 - Displays geographic location of remote IPs
 - Color-codes ports and states to highlight potential risks
 - Tracks how long connections have been active
+- **Real bandwidth tracking** and connection statistics
+- **Top talkers** display showing most active processes
+- **DNS resolution** to resolve IPs to hostnames
+- **Webhook alerts** for Discord, Slack, and custom endpoints
+- **Port knock detection** for security monitoring
+- **VPN detection** to identify VPN connections
+- **Advanced filtering** by IP, protocol, port, process, country
+- **Electron dashboard** with React for visual monitoring
+- **Historical graphs** with configurable timeframes
+- **Export functionality** (CSV/JSON)
 - Fully configurable through a simple YAML file
 
 ---
@@ -156,6 +166,7 @@ columnOrder: ['Proto', 'Port', 'Process', 'Foreign', 'State', 'Geo', 'Age']
 
 ### Starting the Monitor
 
+**Terminal Mode (Default):**
 ```bash
 # Windows batch file (easiest)
 run.bat
@@ -166,6 +177,20 @@ node src/scanner.js
 # NPM script (if installed from source)
 npm start
 ```
+
+**Dashboard Mode:**
+```bash
+# Run dashboard with visual interface
+npm run dashboard
+
+# This starts:
+# 1. Dashboard server (port 3000)
+# 2. Electron window with React interface
+# 3. Scanner feeding data to dashboard
+```
+
+> [!TIP]
+> See [FEATURES.md](FEATURES.md) for complete documentation of all advanced features.
 
 ### Understanding Output
 
