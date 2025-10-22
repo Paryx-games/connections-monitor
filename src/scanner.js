@@ -477,6 +477,21 @@ function saveHistoricalData(connections) {
   }
 }
 
+// Send data to dashboard if enabled
+async function sendToDashboard(connections) {
+  if (!config.dashboard?.enabled) return;
+
+  try {
+    await fetch(`http://localhost:${config.dashboard.port}/api/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connections })
+    });
+  } catch (error) {
+    // Silently fail if dashboard is not running
+  }
+}
+
 // The main function that grabs all active network connections from your system.
 // Runs PowerShell commands to get TCP and UDP connections, then enriches each one
 // with process names, geolocation, and age tracking before displaying them.
@@ -518,9 +533,11 @@ async function getConnections() {
         timestamp: Date.now()
       };
 
-      // Clear screen and show header
-      console.clear();
-      console.log(buildHeader());
+      // Clear screen and show header (only if dashboard is not enabled)
+      if (!config.dashboard?.enabled) {
+        console.clear();
+        console.log(buildHeader());
+      }
 
       for (const conn of allConnections) {
         try {
@@ -591,21 +608,34 @@ async function getConnections() {
         }
       }
 
-      // Display stats and top talkers at the bottom
-      displayStats();
-      displayTopTalkers();
+      // Display stats and top talkers at the bottom (only if dashboard is not enabled)
+      if (!config.dashboard?.enabled) {
+        displayStats();
+        displayTopTalkers();
+      }
 
       // Check alerts
       checkAlerts(displayedConnections);
 
       // Save historical data
       saveHistoricalData(displayedConnections);
+
+      // Send to dashboard if enabled
+      if (config.dashboard?.enabled) {
+        sendToDashboard(displayedConnections);
+      }
     });
   });
 }
 
-console.clear();
-console.log(buildHeader());
+// Initialize
+if (!config.dashboard?.enabled) {
+  console.clear();
+  console.log(buildHeader());
+} else {
+  console.log('Dashboard mode enabled. Data will be sent to dashboard server.');
+  console.log(`Dashboard URL: http://localhost:${config.dashboard.port}`);
+}
 
 // Keeps the display fresh by calling getConnections() every few seconds.
 // The refresh rate comes from your config file (default is 2 seconds).

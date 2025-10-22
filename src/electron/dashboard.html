@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connections Monitor Dashboard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #root {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            font-size: 14px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4fc3f7;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .controls {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px 30px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 250px;
+            padding: 10px 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .search-box::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: #4fc3f7;
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: #29b6f6;
+        }
+
+        .btn-danger {
+            background: #f44336;
+        }
+
+        .btn-danger:hover {
+            background: #e53935;
+        }
+
+        .btn-success {
+            background: #66bb6a;
+        }
+
+        .btn-success:hover {
+            background: #4caf50;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #4fc3f7;
+        }
+
+        .filter-section {
+            margin-bottom: 25px;
+        }
+
+        .filter-item {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .filter-item label {
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tab.active {
+            border-bottom-color: #4fc3f7;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .connections-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .connections-table th {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .connections-table td {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .connections-table tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-tcp {
+            background: #66bb6a;
+            color: #000;
+        }
+
+        .badge-udp {
+            background: #29b6f6;
+            color: #000;
+        }
+
+        .badge-vpn {
+            background: #ff9800;
+            color: #000;
+        }
+
+        .badge-blocked {
+            background: #f44336;
+            color: #fff;
+        }
+
+        .chart-container {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            justify-content: center;
+        }
+
+        .timeframe-btn {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .timeframe-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .timeframe-btn.active {
+            background: #4fc3f7;
+            border-color: #4fc3f7;
+            color: #000;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 50px;
+            opacity: 0.6;
+            font-size: 16px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .alert-banner {
+            background: #f44336;
+            color: #fff;
+            padding: 10px 30px;
+            text-align: center;
+            font-weight: 600;
+            animation: slideDown 0.3s;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .top-talkers {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .top-talkers h3 {
+            margin-bottom: 10px;
+            color: #4fc3f7;
+        }
+
+        .talker-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .talker-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function Dashboard() {
+            const [connections, setConnections] = useState([]);
+            const [stats, setStats] = useState({ tcpCount: 0, udpCount: 0, totalConnections: 0, totalBandwidth: 0 });
+            const [isPaused, setIsPaused] = useState(false);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [activeTab, setActiveTab] = useState('connections');
+            const [historicalData, setHistoricalData] = useState([]);
+            const [timeframe, setTimeframe] = useState('1h');
+            const [filters, setFilters] = useState({
+                protocol: [],
+                showVPN: true,
+                showBlocked: true
+            });
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                // Fetch initial data
+                fetchConnections();
+                fetchStats();
+
+                // WebSocket connection
+                const ws = new WebSocket('ws://localhost:3000');
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'connections') {
+                        setConnections(data.connections);
+                        fetchStats();
+                    } else if (data.type === 'pause') {
+                        setIsPaused(data.isPaused);
+                    }
+                };
+
+                // Polling fallback
+                const interval = setInterval(() => {
+                    if (!isPaused) {
+                        fetchConnections();
+                        fetchStats();
+                    }
+                }, 2000);
+
+                return () => {
+                    ws.close();
+                    clearInterval(interval);
+                };
+            }, [isPaused]);
+
+            useEffect(() => {
+                if (activeTab === 'graphs') {
+                    fetchHistory();
+                }
+            }, [activeTab, timeframe]);
+
+            useEffect(() => {
+                if (activeTab === 'graphs' && historicalData.length > 0) {
+                    renderChart();
+                }
+            }, [historicalData, activeTab]);
+
+            const fetchConnections = async () => {
+                try {
+                    const res = await fetch('http://localhost:3000/api/connections');
+                    const data = await res.json();
+                    setConnections(data.connections || []);
+                    setIsPaused(data.isPaused);
+                } catch (error) {
+                    console.error('Error fetching connections:', error);
+                }
+            };
+
+            const fetchStats = async () => {
+                try {
+                    const res = await fetch('http://localhost:3000/api/stats');
+                    const data = await res.json();
+                    setStats(data);
+                } catch (error) {
+                    console.error('Error fetching stats:', error);
+                }
+            };
+
+            const fetchHistory = async () => {
+                try {
+                    const res = await fetch(`http://localhost:3000/api/history?timeframe=${timeframe}`);
+                    const data = await res.json();
+                    setHistoricalData(data);
+                } catch (error) {
+                    console.error('Error fetching history:', error);
+                }
+            };
+
+            const togglePause = async () => {
+                try {
+                    const res = await fetch('http://localhost:3000/api/pause', { method: 'POST' });
+                    const data = await res.json();
+                    setIsPaused(data.isPaused);
+                } catch (error) {
+                    console.error('Error toggling pause:', error);
+                }
+            };
+
+            const handleSearch = (e) => {
+                setSearchQuery(e.target.value.toLowerCase());
+            };
+
+            const exportData = async (format) => {
+                try {
+                    const res = await fetch('http://localhost:3000/api/export', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ format })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        alert(`Exported to: ${data.filename}`);
+                    }
+                } catch (error) {
+                    console.error('Error exporting:', error);
+                }
+            };
+
+            const blockIP = async (ip) => {
+                if (confirm(`Block IP: ${ip}?`)) {
+                    try {
+                        const res = await fetch('http://localhost:3000/api/block', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ip })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            alert('IP blocked successfully');
+                        }
+                    } catch (error) {
+                        console.error('Error blocking IP:', error);
+                    }
+                }
+            };
+
+            const renderChart = () => {
+                if (!chartRef.current) return;
+
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+
+                const ctx = chartRef.current.getContext('2d');
+                chartInstance.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: historicalData.map(d => new Date(d.timestamp).toLocaleTimeString()),
+                        datasets: [
+                            {
+                                label: 'TCP Connections',
+                                data: historicalData.map(d => d.tcpCount),
+                                borderColor: '#66bb6a',
+                                backgroundColor: 'rgba(102, 187, 106, 0.1)',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'UDP Connections',
+                                data: historicalData.map(d => d.udpCount),
+                                borderColor: '#29b6f6',
+                                backgroundColor: 'rgba(41, 182, 246, 0.1)',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Bandwidth (KB/s)',
+                                data: historicalData.map(d => (d.totalBandwidth / 1024).toFixed(2)),
+                                borderColor: '#ff9800',
+                                backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                                tension: 0.4,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#fff'
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#fff' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            },
+                            y: {
+                                ticks: { color: '#fff' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                position: 'right',
+                                ticks: { color: '#fff' },
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const filteredConnections = connections.filter(conn => {
+                // Search filter
+                if (searchQuery) {
+                    const searchStr = `${conn.proto} ${conn.local} ${conn.foreign} ${conn.procName} ${conn.geo}`.toLowerCase();
+                    if (!searchStr.includes(searchQuery)) return false;
+                }
+
+                // Protocol filter
+                if (filters.protocol.length > 0 && !filters.protocol.includes(conn.proto)) {
+                    return false;
+                }
+
+                // VPN filter
+                if (!filters.showVPN && conn.isVPN) {
+                    return false;
+                }
+
+                // Blocked filter
+                if (!filters.showBlocked && conn.isBlocked) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            const getTopTalkers = () => {
+                const talkers = {};
+                connections.forEach(conn => {
+                    if (!talkers[conn.procName]) {
+                        talkers[conn.procName] = { count: 0, bytes: 0 };
+                    }
+                    talkers[conn.procName].count++;
+                    talkers[conn.procName].bytes += conn.bytes || 0;
+                });
+
+                return Object.entries(talkers)
+                    .sort((a, b) => b[1].count - a[1].count)
+                    .slice(0, 5);
+            };
+
+            const formatBytes = (bytes) => {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+            };
+
+            return (
+                <div>
+                    <div className="header">
+                        <h1>🔌 Connections Monitor Dashboard</h1>
+                        <div className="stats">
+                            <div className="stat-item">
+                                <div className="stat-value">{stats.tcpCount}</div>
+                                <div className="stat-label">TCP</div>
+                            </div>
+                            <div className="stat-item">
+                                <div className="stat-value">{stats.udpCount}</div>
+                                <div className="stat-label">UDP</div>
+                            </div>
+                            <div className="stat-item">
+                                <div className="stat-value">{stats.totalConnections}</div>
+                                <div className="stat-label">Total</div>
+                            </div>
+                            <div className="stat-item">
+                                <div className="stat-value">{formatBytes(stats.totalBandwidth)}/s</div>
+                                <div className="stat-label">Bandwidth</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="controls">
+                        <input
+                            type="text"
+                            className="search-box"
+                            placeholder="Search connections..."
+                            value={searchQuery}
+                            onChange={handleSearch}
+                        />
+                        <button className={`btn ${isPaused ? 'btn-success' : 'btn-danger'}`} onClick={togglePause}>
+                            {isPaused ? '▶ Resume' : '⏸ Pause'}
+                        </button>
+                        <button className="btn" onClick={() => exportData('json')}>
+                            📥 Export JSON
+                        </button>
+                        <button className="btn" onClick={() => exportData('csv')}>
+                            📥 Export CSV
+                        </button>
+                    </div>
+
+                    <div className="main-content">
+                        <div className="sidebar">
+                            <div className="filter-section">
+                                <h3>Protocol Filter</h3>
+                                <div className="filter-item">
+                                    <input
+                                        type="checkbox"
+                                        id="tcp-filter"
+                                        checked={filters.protocol.includes('TCP')}
+                                        onChange={(e) => {
+                                            const newProtocol = e.target.checked
+                                                ? [...filters.protocol, 'TCP']
+                                                : filters.protocol.filter(p => p !== 'TCP');
+                                            setFilters({ ...filters, protocol: newProtocol });
+                                        }}
+                                    />
+                                    <label htmlFor="tcp-filter">TCP</label>
+                                </div>
+                                <div className="filter-item">
+                                    <input
+                                        type="checkbox"
+                                        id="udp-filter"
+                                        checked={filters.protocol.includes('UDP')}
+                                        onChange={(e) => {
+                                            const newProtocol = e.target.checked
+                                                ? [...filters.protocol, 'UDP']
+                                                : filters.protocol.filter(p => p !== 'UDP');
+                                            setFilters({ ...filters, protocol: newProtocol });
+                                        }}
+                                    />
+                                    <label htmlFor="udp-filter">UDP</label>
+                                </div>
+                            </div>
+
+                            <div className="filter-section">
+                                <h3>Connection Type</h3>
+                                <div className="filter-item">
+                                    <input
+                                        type="checkbox"
+                                        id="vpn-filter"
+                                        checked={filters.showVPN}
+                                        onChange={(e) => setFilters({ ...filters, showVPN: e.target.checked })}
+                                    />
+                                    <label htmlFor="vpn-filter">Show VPN</label>
+                                </div>
+                                <div className="filter-item">
+                                    <input
+                                        type="checkbox"
+                                        id="blocked-filter"
+                                        checked={filters.showBlocked}
+                                        onChange={(e) => setFilters({ ...filters, showBlocked: e.target.checked })}
+                                    />
+                                    <label htmlFor="blocked-filter">Show Blocked</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="content-area">
+                            <div className="tabs">
+                                <div
+                                    className={`tab ${activeTab === 'connections' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('connections')}
+                                >
+                                    Connections ({filteredConnections.length})
+                                </div>
+                                <div
+                                    className={`tab ${activeTab === 'graphs' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('graphs')}
+                                >
+                                    Historical Graphs
+                                </div>
+                                <div
+                                    className={`tab ${activeTab === 'top-talkers' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('top-talkers')}
+                                >
+                                    Top Talkers
+                                </div>
+                            </div>
+
+                            <div className="tab-content">
+                                {activeTab === 'connections' && (
+                                    <table className="connections-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Proto</th>
+                                                <th>Local</th>
+                                                <th>Foreign</th>
+                                                <th>State</th>
+                                                <th>PID</th>
+                                                <th>Process</th>
+                                                <th>Geo</th>
+                                                <th>Bytes</th>
+                                                <th>Age</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredConnections.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="10" className="no-data">No connections to display</td>
+                                                </tr>
+                                            ) : (
+                                                filteredConnections.map((conn, idx) => (
+                                                    <tr key={idx}>
+                                                        <td>
+                                                            <span className={`badge badge-${conn.proto.toLowerCase()}`}>
+                                                                {conn.proto}
+                                                            </span>
+                                                        </td>
+                                                        <td>{conn.local}</td>
+                                                        <td>
+                                                            {conn.hostname || conn.foreign}
+                                                            {conn.isVPN && <span className="badge badge-vpn">VPN</span>}
+                                                            {conn.isBlocked && <span className="badge badge-blocked">BLOCKED</span>}
+                                                        </td>
+                                                        <td>{conn.state}</td>
+                                                        <td>{conn.pid}</td>
+                                                        <td>{conn.procName}</td>
+                                                        <td>{conn.geo}</td>
+                                                        <td>{formatBytes(conn.bytes)}</td>
+                                                        <td>{conn.age}s</td>
+                                                        <td>
+                                                            {conn.foreign !== '-' && (
+                                                                <button
+                                                                    className="btn btn-danger"
+                                                                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                                                                    onClick={() => blockIP(conn.foreign.split(':')[0])}
+                                                                >
+                                                                    Block
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                )}
+
+                                {activeTab === 'graphs' && (
+                                    <div>
+                                        <div className="chart-controls">
+                                            {['1h', '6h', '1d', '1w'].map(tf => (
+                                                <button
+                                                    key={tf}
+                                                    className={`timeframe-btn ${timeframe === tf ? 'active' : ''}`}
+                                                    onClick={() => setTimeframe(tf)}
+                                                >
+                                                    {tf}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="chart-container" style={{ height: '500px' }}>
+                                            {historicalData.length === 0 ? (
+                                                <div className="no-data">No historical data available</div>
+                                            ) : (
+                                                <canvas ref={chartRef}></canvas>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'top-talkers' && (
+                                    <div className="top-talkers">
+                                        <h3>Top Processes by Connection Count</h3>
+                                        {getTopTalkers().map(([process, data], idx) => (
+                                            <div key={idx} className="talker-item">
+                                                <div>
+                                                    <strong>{process}</strong>
+                                                </div>
+                                                <div>
+                                                    {data.count} connections • {formatBytes(data.bytes)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<Dashboard />, document.getElementById('root'));
+    </script>
+</body>
+
+</html>
