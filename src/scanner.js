@@ -220,11 +220,19 @@ async function sendAlert(alertType, data) {
       const url = webhook.url || webhook;
 
       // Detect webhook type and format accordingly
-      if (url.includes('discord.com')) {
+      let host;
+      try {
+        host = (new URL(url)).host;
+      } catch (e) {
+        host = '';
+      }
+
+      // Discord webhook host matches
+      if (host === 'discord.com' || host.endsWith('.discord.com') || host === 'discordapp.com' || host.endsWith('.discordapp.com')) {
         payload = {
           content: `**Alert: ${alertType}**\n\`\`\`\n${JSON.stringify(data, null, 2)}\n\`\`\``
         };
-      } else if (url.includes('slack.com')) {
+      } else if (host === 'slack.com' || host.endsWith('.slack.com')) {
         payload = {
           text: `*Alert: ${alertType}*\n\`\`\`${JSON.stringify(data, null, 2)}\`\`\``
         };
