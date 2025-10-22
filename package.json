@@ -2,9 +2,14 @@
   "name": "connections_monitor",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "start": "node src/scanner.js",
+    "install-app": "powershell -ExecutionPolicy Bypass -File install.ps1",
+    "build-installer": "powershell -ExecutionPolicy Bypass -File build-installer-exe.ps1"
+  },
   "dependencies": {
     "chalk": "^5.6.2",
-    "node-fetch": "^3.3.2",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^3.3.2"
   }
 }
