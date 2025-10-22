@@ -342,6 +342,18 @@
             }
         }
 
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
         .top-talkers {
             background: rgba(0, 0, 0, 0.2);
             padding: 15px 20px;
@@ -373,6 +385,10 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // Get API URL from current location (supports dynamic ports)
+        const API_BASE = window.location.origin || 'http://localhost:3000';
+        const WS_BASE = API_BASE.replace('http', 'ws');
+
         function Dashboard() {
             const [connections, setConnections] = useState([]);
             const [stats, setStats] = useState({ tcpCount: 0, udpCount: 0, totalConnections: 0, totalBandwidth: 0 });
@@ -386,6 +402,8 @@
                 showVPN: true,
                 showBlocked: true
             });
+            const [isConnected, setIsConnected] = useState(false);
+            const [connectionError, setConnectionError] = useState(null);
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
 
@@ -394,18 +412,48 @@
                 fetchConnections();
                 fetchStats();
 
-                // WebSocket connection
-                const ws = new WebSocket('ws://localhost:3000');
+                // WebSocket connection with retry
+                let ws;
+                let reconnectTimer;
 
-                ws.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'connections') {
-                        setConnections(data.connections);
-                        fetchStats();
-                    } else if (data.type === 'pause') {
-                        setIsPaused(data.isPaused);
+                const connectWebSocket = () => {
+                    try {
+                        ws = new WebSocket(WS_BASE);
+
+                        ws.onopen = () => {
+                            console.log('WebSocket connected');
+                            setIsConnected(true);
+                            setConnectionError(null);
+                        };
+
+                        ws.onerror = (error) => {
+                            console.error('WebSocket error:', error);
+                            setConnectionError('Connection error');
+                        };
+
+                        ws.onclose = () => {
+                            console.log('WebSocket disconnected');
+                            setIsConnected(false);
+                            // Attempt to reconnect after 3 seconds
+                            reconnectTimer = setTimeout(connectWebSocket, 3000);
+                        };
+
+                        ws.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            if (data.type === 'connections') {
+                                setConnections(data.connections);
+                                fetchStats();
+                            } else if (data.type === 'pause') {
+                                setIsPaused(data.isPaused);
+                            }
+                        };
+                    } catch (error) {
+                        console.error('Failed to create WebSocket:', error);
+                        setConnectionError('Failed to connect to server');
                     }
                 };
+
+                connectWebSocket();
 
                 // Polling fallback
                 const interval = setInterval(() => {
@@ -416,7 +464,8 @@
                 }, 2000);
 
                 return () => {
-                    ws.close();
+                    if (ws) ws.close();
+                    if (reconnectTimer) clearTimeout(reconnectTimer);
                     clearInterval(interval);
                 };
             }, [isPaused]);
@@ -435,18 +484,22 @@
 
             const fetchConnections = async () => {
                 try {
-                    const res = await fetch('http://localhost:3000/api/connections');
+                    const res = await fetch(`${API_BASE}/api/connections`);
                     const data = await res.json();
                     setConnections(data.connections || []);
                     setIsPaused(data.isPaused);
+                    setIsConnected(true);
+                    setConnectionError(null);
                 } catch (error) {
                     console.error('Error fetching connections:', error);
+                    setIsConnected(false);
+                    setConnectionError('Cannot reach server');
                 }
             };
 
             const fetchStats = async () => {
                 try {
-                    const res = await fetch('http://localhost:3000/api/stats');
+                    const res = await fetch(`${API_BASE}/api/stats`);
                     const data = await res.json();
                     setStats(data);
                 } catch (error) {
@@ -456,7 +509,7 @@
 
             const fetchHistory = async () => {
                 try {
-                    const res = await fetch(`http://localhost:3000/api/history?timeframe=${timeframe}`);
+                    const res = await fetch(`${API_BASE}/api/history?timeframe=${timeframe}`);
                     const data = await res.json();
                     setHistoricalData(data);
                 } catch (error) {
@@ -466,7 +519,7 @@
 
             const togglePause = async () => {
                 try {
-                    const res = await fetch('http://localhost:3000/api/pause', { method: 'POST' });
+                    const res = await fetch(`${API_BASE}/api/pause`, { method: 'POST' });
                     const data = await res.json();
                     setIsPaused(data.isPaused);
                 } catch (error) {
@@ -480,7 +533,7 @@
 
             const exportData = async (format) => {
                 try {
-                    const res = await fetch('http://localhost:3000/api/export', {
+                    const res = await fetch(`${API_BASE}/api/export`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ format })
@@ -497,7 +550,7 @@
             const blockIP = async (ip) => {
                 if (confirm(`Block IP: ${ip}?`)) {
                     try {
-                        const res = await fetch('http://localhost:3000/api/block', {
+                        const res = await fetch(`${API_BASE}/api/block`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ ip })
@@ -630,7 +683,29 @@
             return (
                 <div>
                     <div className="header">
-                        <h1>🔌 Connections Monitor Dashboard</h1>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <h1>🔌 Connections Monitor Dashboard</h1>
+                            <div style={{
+                                padding: '5px 12px',
+                                borderRadius: '15px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                background: isConnected ? 'rgba(76, 175, 80, 0.3)' : 'rgba(244, 67, 54, 0.3)',
+                                border: `2px solid ${isConnected ? '#4caf50' : '#f44336'}`,
+                                color: isConnected ? '#4caf50' : '#f44336'
+                            }}>
+                                <span style={{
+                                    display: 'inline-block',
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    background: isConnected ? '#4caf50' : '#f44336',
+                                    marginRight: '6px',
+                                    animation: isConnected ? 'pulse 2s infinite' : 'none'
+                                }}></span>
+                                {isConnected ? 'CONNECTED' : (connectionError || 'DISCONNECTED')}
+                            </div>
+                        </div>
                         <div className="stats">
                             <div className="stat-item">
                                 <div className="stat-value">{stats.tcpCount}</div>
