@@ -3,10 +3,10 @@
 A Node.js application that monitors and displays active TCP and UDP network connections on Windows systems in real-time. It provides detailed information including process names, geographic locations of remote IPs, connection states, and more.
 
 > [!NOTE]
-> We accept Pull Requests and Issues so long as they follow our guidelines.
+> We accept pull requests and issues so long as they follow our guidelines.
 
 > [!IMPORTANT]
-> It may take a few days to implement or merge pull requests due to business or other issues.
+> It may take a few days to implement or merge pull requests due to maintainers being busy or other important issues or priorities.
 
 ## Features
 
@@ -27,90 +27,83 @@ A Node.js application that monitors and displays active TCP and UDP network conn
 
 ## Installation
 
-### For End Users: Download the Installer EXE
+### Quick Start
 
-1. **Download** `ConnectionsMonitor-Installer.exe` from the [Releases](https://github.com/Paryx-games/connections-monitor/releases) page
-2. **Double-click** the installer
-3. **Follow the wizard** to configure and install
-4. **Launch** from Start Menu!
+1. **Download** the latest release from [Releases](https://github.com/Paryx-games/connections-monitor/releases)
+2. **Unzip** the files to any folder
+3. **Configure** your IPinfo.io token in `config.yml`
+4. **Run** the application (see below)
 
-**No administrator rights required!** ✅
+### For Developers: Clone from Source
 
----
-
-### For Developers: Build From Source
-
-#### Quick Install:
+> [!CAUTION]
 
 ```powershell
 # Clone the repository
 git clone https://github.com/Paryx-games/connections-monitor.git
 cd connections-monitor
-
-# Run the installer
-npm run install-app
 ```
-
-#### Manual Install:
+> [!TIP]
+> If you're cloning this repo, ensure you've installed Node.js first and have all dependencies installed.
 
 ```powershell
 # Install dependencies
 npm install
+```
 
-# Configure
-# Edit config.yml and add your IPinfo.io token
+**Configure**
 
-# Run
+Edit config.yml and add your IPinfo.io token
+
+**Run the script**
+```
 npm start
 ```
 
 ---
 
-## Building the Installer
-
-Want to build the installer EXE yourself?
-
-```powershell
-# Builds: ConnectionsMonitor-Installer.exe
-npm run build-installer
-```
-
-See [BUILD_EXE_INSTRUCTIONS.md](BUILD_EXE_INSTRUCTIONS.md) for detailed instructions.
-
-**Requirements:**
-- PS2EXE PowerShell module (automatically installed by build script)
-
----
-
 ## Configuration
 
-Edit `config.yml` to customize settings:
+Edit [`config.yml`](CONFIG.YML) to customize settings:
 
 ```yaml
-# Get your token from: https://ipinfo.io/signup (free tier: 50k requests/month)
-ipToken: "your_token_here"
+# Get your IP token from https://ipinfo.io/account/token
+# Sign up if needed, this will access Geo info
+ipToken: "abc123cba"
 
-# How often to scan connections (milliseconds)
+# Refresh interval in milliseconds (default: 2000)
+# Smaller is faster but uses more CPU
 refreshInterval: 2000
 
-# Highlight risky ports
+# Highlighted ports: object mapping ports to custom hex colors
 highlightedPorts:
-  '3389': '#FF0000'  # RDP - Red
-  '445': '#800080'   # SMB - Purple
-  '22': '#FFA500'    # SSH - Orange
+  '21': '#FFFF00'       # FTP - Yellow
+  '22': '#FFA500'       # SSH - Orange
+  '23': '#FF0000'       # Telnet - Red
+  '25': '#800080'       # SMTP - Purple
+  '53': '#00FFFF'       # DNS - Cyan
+  '80': '#FFFFFF'       # HTTP - White
+  '110': '#FFFF00'      # POP3 - Yellow
+  '135': '#00FFFF'      # RPC - Cyan
+  '139': '#FFFF00'      # NetBIOS - Yellow
+  '143': '#800080'      # IMAP - Purple
+  '443': '#008000'      # HTTPS - Green
+  '445': '#800080'      # SMB - Purple
+  '993': '#FFFF00'      # IMAPS - Yellow
+  '995': '#FFFF00'      # POP3S - Yellow
+  '3389': '#FF0000'     # RDP - Red
 
-# Color scheme
+# Colors for TCP/UDP states: object mapping states to color names
 colors:
   tcp:
     listening: 'green'
     established: 'yellow'
+    close_wait: 'red'
+    time_wait: 'magenta'
     other: 'white'
   udp: 'cyan'
 
-# Display options
-logErrors: true
-
-# Columns to show
+# Columns to display: object with column names as keys and true/false to enable
 columns:
   Proto: true
   Local: true
@@ -123,7 +116,7 @@ columns:
   Bytes: true
   Age: true
 
-# Column widths
+# Column widths: object mapping column names to widths
 columnWidths:
   Proto: 5
   Local: 22
@@ -136,7 +129,7 @@ columnWidths:
   Bytes: 8
   Age: 6
 
-# Column order
+# Column order: array specifying the order of columns (must match columns array)
 columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'Geo', 'Bytes', 'Age']
 ```
 
@@ -144,11 +137,17 @@ columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'G
 
 ## Running the Application
 
-### If Installed via EXE Installer:
-- Open **Start Menu** → Search for **"Connections Monitor"**
-- Click to launch
+### Option 1: Using the batch file
+```
+run.bat
+```
 
-### If Running from Source:
+### Option 2: Using Node directly
+```
+node src/scanner.js
+```
+
+### Option 3: Using npm (if cloned from source)
 ```powershell
 npm start
 ```
@@ -178,41 +177,12 @@ The output displays a real-time table with the following columns:
 
 ### Color Coding
 
-- **Risky Ports**: Highlighted in colors (RDP=red, SMB=purple, SSH=orange)
+- **Highlighted Ports**: Highlighted in colors (RDP=red, SMB=purple, SSH=orange)
 - **TCP States**:
   - Listening: Green
   - Established: Yellow
   - Others: White
 - **UDP**: Cyan
-
----
-
-## Installation Locations
-
-When installed via the EXE installer, files are placed in your user profile:
-
-- **Application:** `%LOCALAPPDATA%\ConnectionsMonitor`
-- **Config:** `%LOCALAPPDATA%\ConnectionsMonitor\config.yml`
-- **Start Menu:** User Start Menu → Connections Monitor
-
-**Full path:** `C:\Users\YourName\AppData\Local\ConnectionsMonitor`
-
----
-
-## Uninstallation
-
-### If Installed via EXE:
-1. Delete the application folder:
-   ```powershell
-   Remove-Item -Path "$env:LOCALAPPDATA\ConnectionsMonitor" -Recurse -Force
-   ```
-2. Delete Start Menu shortcut:
-   ```powershell
-   Remove-Item -Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Connections Monitor" -Recurse -Force
-   ```
-
-### If Running from Source:
-Just delete the repository folder.
 
 ---
 
@@ -223,10 +193,12 @@ Just delete the repository folder.
 3. Copy your token from the dashboard
 4. Add to `config.yml`:
    ```yaml
-   ipToken: "your_token_here"
+   ipToken: "abc123cba" # replace with your actual token
    ```
 
-**Free tier:** 50,000 requests/month
+**Free tier:** 50,000 requests/month, no credit card required
+
+**Paid tier:** Unlimited requests, but not required for free usage
 
 ---
 
@@ -236,6 +208,9 @@ Just delete the repository folder.
 Install Node.js from: https://nodejs.org/
 - Choose "Install for current user only" (no admin needed)
 - Make sure "Add to PATH" is checked
+
+### "node is not recognized"
+Close and reopen your terminal after installing Node.js, or restart your computer.
 
 ### "Cannot run scripts"
 ```powershell
@@ -257,24 +232,28 @@ node --version
 
 ### Project Structure
 
+> [!WARNING]
+> Please keep the structure like this to keep the scripts working correctly.
+
 ```
 connections-monitor/
 ├── src/
-│   └── scanner.js          # Main application
-├── install.ps1             # Installer script
-├── build-installer-exe.ps1 # Builds the EXE installer
+│   └── scanner.js          # You can put other files here
+├── run.bat                 # Batch file to run the app
 ├── config.yml              # Configuration file
 ├── package.json            # Dependencies
 └── README.md               # This file
 ```
+
+> [!IMPORTANT]
+> DO NOT change [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [run.bat](run.bat), or [README.md](README.md)
 
 ### Scripts
 
 | Command | Description |
 |---------|-------------|
 | `npm start` | Run the application |
-| `npm run install-app` | Run the installer wizard |
-| `npm run build-installer` | Build the EXE installer |
+| `npm install` | Install dependencies |
 
 ---
 
@@ -286,7 +265,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) a
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. Do not attempt to change the license.
 
 ---
 
@@ -303,4 +282,4 @@ This tool is for educational and monitoring purposes only. Ensure you have permi
 
 ---
 
-**Enjoy monitoring your network connections! 🚀**
+**Enjoy monitoring your network connections!**
