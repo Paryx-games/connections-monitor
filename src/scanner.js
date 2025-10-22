@@ -92,8 +92,14 @@ function formatLine({ proto, local, foreign, state, pid, procName, geo, bytes, a
   };
 
   const textParts = columns.map(col => {
-    const value = data[col] || '-';
+    let value = String(data[col] || '-');
     const width = widths[col] || 10;
+
+    // Truncate if enabled and value exceeds width
+    if (config.truncateOverflow && value.length > width) {
+      value = value.substring(0, width - 2) + '..';
+    }
+
     return ['Bytes', 'Age'].includes(col)
       ? value.padStart(width)
       : value.padEnd(width);

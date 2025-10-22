@@ -65,6 +65,11 @@ columnWidths:
   Bytes: 8
   Age: 6
 
+# Truncate text that exceeds column width
+# If true, text will be cut to (columnWidth - 2) characters and "..." will be appended
+# If false, text may overflow into adjacent columns
+truncateOverflow: true
+
 # Order of columns from left to right
 # Must match the column names defined in the 'columns' section above
 columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'Geo', 'Bytes', 'Age']
