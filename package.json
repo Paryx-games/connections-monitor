@@ -5,7 +5,10 @@
   "main": "src/electron/main.js",
   "scripts": {
     "start": "node src/scanner.js",
-    "dashboard": "concurrently \"node src/server.js\" \"electron .\"",
+    "server": "node src/server.js",
+    "scanner": "node src/scanner.js",
+    "electron": "electron .",
+    "dashboard": "concurrently -k \"npm run server\" \"npm run scanner\" \"npm run electron\"",
     "install-app": "powershell -ExecutionPolicy Bypass -File install.ps1",
     "build-installer": "powershell -ExecutionPolicy Bypass -File build-installer-exe.ps1"
   },
