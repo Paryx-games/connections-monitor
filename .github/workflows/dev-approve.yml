@@ -1,13 +1,14 @@
 name: Auto-approve dev to main PR
-   on:
-     pull_request:
-       branches:
-         - main
-   
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
 jobs:
   auto-approve:
     runs-on: ubuntu-latest
-    if: github.head_ref == 'dev' && github.base_ref == 'main'
+    if: github.event.pull_request.head.ref == 'dev'
     steps:
       - uses: hmarr/auto-approve-action@v3
         with:
