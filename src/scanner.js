@@ -67,7 +67,202 @@ function buildHeader() {
   return chalk.bold(headerParts.join(''));
 }
 
-// Format connection line
+// Format bytes for display
+function formatBytes(bytes) {
+  if (bytes === 0) return '0B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + sizes[i];
+}
+
+// Resolve IP to hostname using DNS
+async function resolveHostname(ip) {
+  if (!config.resolveDNS) return null;
+
+  // Check cache first
+  if (dnsCache.has(ip)) {
+    return dnsCache.get(ip);
+  }
+
+  // Skip local IPs
+  if (!ip || ip === '0.0.0.0' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+    return null;
+  }
+
+  try {
+    const hostnames = await dnsReverse(ip);
+    const hostname = hostnames[0] || null;
+    dnsCache.set(ip, hostname);
+    return hostname;
+  } catch (error) {
+    dnsCache.set(ip, null);
+    return null;
+  }
+}
+
+// Detect if connection is through VPN
+function detectVPN(procName, foreign) {
+  const vpnProcesses = ['openvpn', 'wireguard', 'nordvpn', 'expressvpn', 'pia', 'protonvpn', 'tunnelbear', 'windscribe'];
+  const vpnPorts = [1194, 1723, 500, 4500, 51820];
+
+  const isVPNProcess = vpnProcesses.some(vpn => procName.toLowerCase().includes(vpn));
+  const isVPNPort = vpnPorts.some(port => foreign.includes(`:${port}`));
+
+  return isVPNProcess || isVPNPort;
+}
+
+// Detect port knocking attempts
+function detectPortKnock(ip, port) {
+  const now = Date.now();
+  const threshold = 5000; // 5 seconds window
+  const knockThreshold = 5; // 5 different ports in quick succession
+
+  if (!portKnockDetector.has(ip)) {
+    portKnockDetector.set(ip, []);
+  }
+
+  const knocks = portKnockDetector.get(ip);
+  knocks.push({ port, timestamp: now });
+
+  // Clean old knocks
+  const recentKnocks = knocks.filter(k => now - k.timestamp < threshold);
+  portKnockDetector.set(ip, recentKnocks);
+
+  // Check for knock pattern
+  const uniquePorts = new Set(recentKnocks.map(k => k.port));
+  if (uniquePorts.size >= knockThreshold) {
+    return true;
+  }
+
+  return false;
+}
+
+// Check if connection should be filtered
+function shouldFilterConnection(proto, port, procName, country, ip) {
+  if (!config.connectionFiltering?.enabled && !config.ipFiltering?.enabled) {
+    return false;
+  }
+
+  // IP filtering
+  if (config.ipFiltering?.enabled) {
+    if (config.ipFiltering.allowlist.length > 0) {
+      if (!config.ipFiltering.allowlist.includes(ip)) {
+        return true; // Not in allowlist, filter it
+      }
+    }
+    if (config.ipFiltering.blocklist.includes(ip)) {
+      return true; // In blocklist, filter it
+    }
+  }
+
+  // Connection filtering
+  if (config.connectionFiltering?.enabled) {
+    if (config.connectionFiltering.protocols.length > 0) {
+      if (!config.connectionFiltering.protocols.includes(proto)) {
+        return true;
+      }
+    }
+    if (config.connectionFiltering.ports.length > 0) {
+      if (!config.connectionFiltering.ports.includes(parseInt(port))) {
+        return true;
+      }
+    }
+    if (config.connectionFiltering.processes.length > 0) {
+      if (!config.connectionFiltering.processes.some(p => procName.toLowerCase().includes(p.toLowerCase()))) {
+        return true;
+      }
+    }
+    if (config.connectionFiltering.countries.length > 0) {
+      if (!config.connectionFiltering.countries.includes(country)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// Send webhook alert
+async function sendAlert(alertType, data) {
+  if (!config.alerts?.enabled || !config.alerts.webhooks?.length) {
+    return;
+  }
+
+  for (const webhook of config.alerts.webhooks) {
+    try {
+      let payload;
+      const url = webhook.url || webhook;
+
+      // Detect webhook type and format accordingly
+      if (url.includes('discord.com')) {
+        payload = {
+          content: `**Alert: ${alertType}**\n\`\`\`\n${JSON.stringify(data, null, 2)}\n\`\`\``
+        };
+      } else if (url.includes('slack.com')) {
+        payload = {
+          text: `*Alert: ${alertType}*\n\`\`\`${JSON.stringify(data, null, 2)}\`\`\``
+        };
+      } else {
+        // Generic JSON webhook
+        payload = {
+          alertType,
+          timestamp: new Date().toISOString(),
+          data
+        };
+      }
+
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      // Silently fail webhook errors
+    }
+  }
+}
+
+// Check alert conditions
+function checkAlerts(connections) {
+  if (!config.alerts?.enabled) return;
+
+  const conditions = config.alerts.conditions || {};
+
+  // Check connection count
+  if (conditions.maxConnections && connections.length > conditions.maxConnections) {
+    sendAlert('High Connection Count', {
+      current: connections.length,
+      threshold: conditions.maxConnections
+    });
+  }
+
+  // Check bandwidth
+  if (conditions.maxBandwidth && stats.totalBandwidth > conditions.maxBandwidth) {
+    sendAlert('High Bandwidth Usage', {
+      current: formatBytes(stats.totalBandwidth),
+      threshold: formatBytes(conditions.maxBandwidth)
+    });
+  }
+
+  // Check suspicious ports
+  if (conditions.suspiciousPorts?.length) {
+    connections.forEach(conn => {
+      const port = conn.port;
+      if (conditions.suspiciousPorts.includes(parseInt(port))) {
+        sendAlert('Suspicious Port Detected', {
+          port,
+          process: conn.procName,
+          foreign: conn.foreign
+        });
+      }
+    });
+  }
+}
+
+// Takes raw connection data and formats it into a nice colored line for display.
+// Applies different colors based on port highlights, TCP states, or UDP protocol.
+// Think of this as the painter that makes the output pretty and readable.
 function formatLine({ proto, local, foreign, state, pid, procName, geo, bytes, age, isVPN, isBlocked, hostname }) {
   proto = String(proto || '-');
   local = String(local || '-');

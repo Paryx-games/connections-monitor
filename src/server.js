@@ -5,6 +5,7 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,9 +94,35 @@ app.post('/api/pause', (req, res) => {
     res.json({ isPaused });
 });
 
-// API: Export data
-app.post('/api/export', (req, res) => {
-    const format = req.body.format || 'json';
+app.post('/api/search', (req, res) => {
+    searchQuery = req.body.query || '';
+    res.json({ success: true });
+});
+
+app.post('/api/filter', (req, res) => {
+    activeFilters = req.body.filters || activeFilters;
+    res.json({ success: true });
+});
+
+// Rate limiter for /api/export
+const exportLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute window
+    max: 5, // limit each IP to 5 export requests per windowMs
+    message: { success: false, error: 'Too many export requests. Please try again later.' }
+});
+
+// Rate limiter for /api/block
+const blockLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute window
+    max: 5, // limit each IP to 5 block requests per windowMs
+    message: { success: false, error: 'Too many block requests. Please try again later.' }
+});
+
+app.post('/api/export', exportLimiter, (req, res) => {
+    // Only allow 'json' or 'csv' extensions, default to 'json'
+    let format = String(req.body.format).toLowerCase();
+    if (format !== 'json' && format !== 'csv') format = 'json';
+
     const exportPath = config.dashboard?.export?.exportPath || './exports';
 
     // Create exports directory if it doesn't exist
@@ -136,8 +163,7 @@ app.post('/api/export', (req, res) => {
     }
 });
 
-// API: Block IP
-app.post('/api/block', (req, res) => {
+app.post('/api/block', blockLimiter, (req, res) => {
     const { ip } = req.body;
 
     if (!ip) {
