@@ -65,7 +65,7 @@ columnWidths:
   State: 12
   PID: 6
   Process: 30
-  Geo: 8
+  Geo: 35
   Bytes: 8
   Age: 6
 
@@ -142,7 +142,7 @@ connectionFiltering:
 
 # Dashboard settings
 dashboard:
-  enabled: false  # Enable Electron dashboard
+  enabled: true  # Enable Electron dashboard
   port: 3000  # Port for the internal web server
   
   # Export settings
