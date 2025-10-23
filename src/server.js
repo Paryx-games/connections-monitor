@@ -119,7 +119,10 @@ const blockLimiter = rateLimit({
 });
 
 app.post('/api/export', exportLimiter, (req, res) => {
-    const format = req.body.format || 'json';
+    // Only allow 'json' or 'csv' extensions, default to 'json'
+    let format = String(req.body.format).toLowerCase();
+    if (format !== 'json' && format !== 'csv') format = 'json';
+
     const exportPath = config.dashboard?.export?.exportPath || './exports';
 
     // Create exports directory if it doesn't exist
