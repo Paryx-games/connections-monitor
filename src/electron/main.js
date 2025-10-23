@@ -3,13 +3,30 @@ import path from 'path';
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { fileURLToPath } from 'url';
+import fetch from 'node-fetch';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow;
 
-function createWindow() {
+// Wait for server to be ready
+async function waitForServer(url, maxAttempts = 30, delayMs = 500) {
+    for (let i = 0; i < maxAttempts; i++) {
+        try {
+            const response = await fetch(`${url}/health`, { timeout: 2000 });
+            if (response.ok) {
+                return true;
+            }
+        } catch (error) {
+            // Server not ready yet
+        }
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    return false;
+}
+
+async function createWindow() {
     // Load config to get the dashboard port
     let port = 3000;
     try {
@@ -18,6 +35,8 @@ function createWindow() {
     } catch (e) {
         console.log('Could not load config, using default port 3000');
     }
+
+    const dashboardUrl = `http://localhost:${port}`;
 
     mainWindow = new BrowserWindow({
         width: 1400,
@@ -29,20 +48,18 @@ function createWindow() {
         autoHideMenuBar: true,
         frame: true,
         title: 'Connections Monitor Dashboard',
-        icon: path.join(__dirname, 'icon.png') // Optional: add icon later
+        backgroundColor: '#0f1419',
+        show: false // Don't show until ready
     });
 
-    // Load from the server instead of file
-    const dashboardUrl = `http://localhost:${port}`;
-
-    // Show loading message
+    // Show loading page
     mainWindow.loadURL(`data:text/html;charset=utf-8,
+        <!DOCTYPE html>
         <html>
             <head>
                 <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
                     body { 
-                        margin: 0; 
-                        padding: 0; 
                         display: flex; 
                         justify-content: center; 
                         align-items: center; 
@@ -67,70 +84,94 @@ function createWindow() {
                         0% { transform: rotate(0deg); }
                         100% { transform: rotate(360deg); }
                     }
+                    h2 { margin-bottom: 10px; font-size: 24px; }
+                    p { opacity: 0.8; font-size: 14px; }
                 </style>
             </head>
             <body>
                 <div class="loader">
                     <div class="spinner"></div>
                     <h2>Loading Dashboard...</h2>
-                    <p>Connecting to server at ${dashboardUrl}</p>
-                    <p style="font-size: 12px; opacity: 0.7; margin-top: 20px;">If this takes too long, make sure the server is running</p>
+                    <p>Waiting for server...</p>
                 </div>
             </body>
         </html>
     `);
 
-    // Wait a moment for server to be ready, then load dashboard
-    setTimeout(() => {
-        mainWindow.loadURL(dashboardUrl).catch(err => {
-            console.error('Failed to load dashboard:', err);
-            mainWindow.loadURL(`data:text/html;charset=utf-8,
-                <html>
-                    <head>
-                        <style>
-                            body { 
-                                margin: 0; 
-                                padding: 0; 
-                                display: flex; 
-                                justify-content: center; 
-                                align-items: center; 
-                                height: 100vh; 
-                                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                                color: white;
-                                text-align: center;
-                            }
-                            .error {
-                                background: rgba(244, 67, 54, 0.2);
-                                padding: 30px;
-                                border-radius: 10px;
-                                border: 2px solid #f44336;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="error">
-                            <h1>⚠️ Connection Failed</h1>
-                            <p>Could not connect to dashboard server</p>
-                            <p>Please make sure the server is running:</p>
-                            <p><code>npm run dashboard</code></p>
-                        </div>
-                    </body>
-                </html>
-            `);
-        });
-    }, 2000);
-
-    // Remove dev tools
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-        if (input.key === 'F12' || (input.control && input.shift && input.key === 'I')) {
-            event.preventDefault();
-        }
+    // Show window once loaded
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
     });
+
+    // Wait for server to be ready
+    console.log('Waiting for dashboard server...');
+    const serverReady = await waitForServer(dashboardUrl);
+
+    if (serverReady) {
+        console.log('Server ready, loading dashboard...');
+        try {
+            await mainWindow.loadURL(dashboardUrl);
+        } catch (err) {
+            console.error('Failed to load dashboard:', err);
+            showErrorPage(mainWindow, dashboardUrl);
+        }
+    } else {
+        console.error('Server failed to start within timeout');
+        showErrorPage(mainWindow, dashboardUrl);
+    }
 
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
+}
+
+function showErrorPage(window, dashboardUrl) {
+    window.loadURL(`data:text/html;charset=utf-8,
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { 
+                        display: flex; 
+                        justify-content: center; 
+                        align-items: center; 
+                        height: 100vh; 
+                        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                        color: white;
+                        text-align: center;
+                        padding: 20px;
+                    }
+                    .error {
+                        background: rgba(244, 67, 54, 0.2);
+                        padding: 40px;
+                        border-radius: 15px;
+                        border: 2px solid #f44336;
+                        max-width: 600px;
+                    }
+                    h1 { margin-bottom: 20px; font-size: 32px; }
+                    p { margin: 10px 0; font-size: 16px; opacity: 0.9; }
+                    code { 
+                        background: rgba(0, 0, 0, 0.3); 
+                        padding: 5px 10px; 
+                        border-radius: 5px;
+                        font-family: 'Courier New', monospace;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="error">
+                    <h1>⚠️ Connection Failed</h1>
+                    <p>Could not connect to dashboard server at:</p>
+                    <p><code>${dashboardUrl}</code></p>
+                    <br>
+                    <p>Please make sure the server is running.</p>
+                    <p>Try restarting the application.</p>
+                </div>
+            </body>
+        </html>
+    `);
 }
 
 app.whenReady().then(createWindow);

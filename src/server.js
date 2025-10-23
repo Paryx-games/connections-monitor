@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
-import { exec } from 'child_process';
 import fs from 'fs';
 import yaml from 'js-yaml';
 import path from 'path';
@@ -23,19 +22,12 @@ app.use(express.static(path.join(__dirname, 'electron')));
 let connections = [];
 let historicalData = [];
 let isPaused = false;
-let searchQuery = '';
-let activeFilters = {
-    protocol: [],
-    port: [],
-    process: [],
-    country: []
-};
 
 // WebSocket server for real-time updates
 const wss = new WebSocketServer({ noServer: true });
 
 const server = app.listen(port, () => {
-    console.log(`Dashboard server running on http://localhost:${port}`);
+    console.log(chalk.green(`✓ Dashboard server running on http://localhost:${port}`));
 });
 
 server.on('upgrade', (request, socket, head) => {
@@ -44,20 +36,26 @@ server.on('upgrade', (request, socket, head) => {
     });
 });
 
-// Broadcast to all connected clients
+// Broadcast to all connected WebSocket clients
 function broadcast(data) {
+    const message = JSON.stringify(data);
     wss.clients.forEach((client) => {
-        if (client.readyState === 1) { // OPEN
-            client.send(JSON.stringify(data));
+        if (client.readyState === 1) { // WebSocket.OPEN
+            try {
+                client.send(message);
+            } catch (error) {
+                // Client disconnected
+            }
         }
     });
 }
 
-// API endpoints
+// API: Get connections
 app.get('/api/connections', (req, res) => {
     res.json({ connections, isPaused });
 });
 
+// API: Get history
 app.get('/api/history', (req, res) => {
     const timeframe = req.query.timeframe || '1h';
     const now = Date.now();
@@ -75,6 +73,7 @@ app.get('/api/history', (req, res) => {
     res.json(filtered);
 });
 
+// API: Get stats
 app.get('/api/stats', (req, res) => {
     const tcpCount = connections.filter(c => c.proto === 'TCP').length;
     const udpCount = connections.filter(c => c.proto === 'UDP').length;
@@ -88,6 +87,7 @@ app.get('/api/stats', (req, res) => {
     });
 });
 
+// API: Toggle pause
 app.post('/api/pause', (req, res) => {
     isPaused = !isPaused;
     broadcast({ type: 'pause', isPaused });
@@ -142,7 +142,16 @@ app.post('/api/export', exportLimiter, (req, res) => {
             const csv = [
                 headers.join(','),
                 ...connections.map(c => [
-                    c.proto, c.local, c.port, c.foreign, c.state, c.pid, c.procName, c.geo, c.bytes, c.age
+                    c.proto || '-',
+                    c.local || '-',
+                    c.port || '-',
+                    c.foreign || '-',
+                    c.state || '-',
+                    c.pid || '-',
+                    `"${(c.procName || '-').replace(/"/g, '""')}"`, // Escape quotes in CSV
+                    `"${(c.geo || '-').replace(/"/g, '""')}"`,
+                    c.bytes || 0,
+                    c.age || 0
                 ].join(','))
             ].join('\n');
             fs.writeFileSync(filepath, csv);
@@ -157,21 +166,32 @@ app.post('/api/export', exportLimiter, (req, res) => {
 app.post('/api/block', blockLimiter, (req, res) => {
     const { ip } = req.body;
 
-    // Add to blocklist in config
-    if (!config.ipFiltering) config.ipFiltering = { enabled: true, blocklist: [], allowlist: [] };
+    if (!ip) {
+        return res.status(400).json({ success: false, message: 'IP address required' });
+    }
+
+    // Initialize ipFiltering if not exists
+    if (!config.ipFiltering) {
+        config.ipFiltering = { enabled: true, blocklist: [], allowlist: [] };
+    }
+
     if (!config.ipFiltering.blocklist.includes(ip)) {
         config.ipFiltering.blocklist.push(ip);
         config.ipFiltering.enabled = true;
 
         // Save config
-        fs.writeFileSync('config.yml', yaml.dump(config));
-        res.json({ success: true });
+        try {
+            fs.writeFileSync('config.yml', yaml.dump(config));
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
     } else {
         res.json({ success: false, message: 'IP already blocked' });
     }
 });
 
-// Update connections from scanner
+// API: Update connections from scanner (main data ingestion endpoint)
 app.post('/api/update', (req, res) => {
     if (!isPaused) {
         connections = req.body.connections || [];
@@ -187,17 +207,47 @@ app.post('/api/update', (req, res) => {
 
             historicalData.push(dataPoint);
 
-            // Keep only last 7 days
+            // Keep only data within retention period
             const retention = config.monitoring?.historyRetention || 604800000;
             const cutoff = Date.now() - retention;
             historicalData = historicalData.filter(d => d.timestamp >= cutoff);
         }
 
-        // Broadcast to connected clients
+        // Broadcast to connected WebSocket clients
         broadcast({ type: 'connections', connections });
     }
 
     res.json({ success: true });
 });
 
-console.log('Server initialized');
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// Import chalk dynamically (ES module)
+import('chalk').then(chalkModule => {
+    const chalk = chalkModule.default;
+    console.log(chalk.cyan.bold('\n⚡ Dashboard Server Started\n'));
+    console.log(chalk.green(`✓ Server running on http://localhost:${port}`));
+    console.log(chalk.yellow(`✓ WebSocket server ready`));
+    console.log(chalk.gray(`\nWaiting for scanner data...\n`));
+}).catch(() => {
+    console.log('\n⚡ Dashboard Server Started\n');
+    console.log(`✓ Server running on http://localhost:${port}`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\n\nShutting down server...');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGTERM', () => {
+    server.close(() => {
+        process.exit(0);
+    });
+});
