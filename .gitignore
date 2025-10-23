@@ -1,2 +1,4 @@
 node_modules/
-ConnectionsMonitor-Installer.exe
+exports/
+.DS_Store
+*.log

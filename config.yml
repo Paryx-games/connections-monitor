@@ -1,16 +1,22 @@
-# Get your IP token from https://ipinfo.io/account/token
-# Sign up if needed, this will access Geo info
+# Your IPinfo.io API token - get one free at https://ipinfo.io/signup
+# This is used to look up geographic locations of remote IP addresses
 ipToken: "abc123cba"
 
-# Refresh interval in milliseconds (default: 2000)
-# Smaller is faster but uses more CPU
+# DNS Resolution - resolve IP addresses to hostnames
+# Note: This may slow down the monitoring and increase network overhead
+resolveDNS: false
+
+# How often to refresh the connection list (in milliseconds)
+# Lower values = more frequent updates but higher CPU and API usage
+# Default: 2000 (2 seconds)
 refreshInterval: 2000
 
-# Highlighted ports: object mapping ports to custom hex colors
+# Custom colors for specific ports (use hex color codes)
+# These override the default TCP/UDP state colors below
 highlightedPorts:
   '21': '#FFFF00'       # FTP - Yellow
   '22': '#FFA500'       # SSH - Orange
-  '23': '#FF0000'       # Telnet - Red
+  '23': '#FF0000'       # Telnet - Red (high risk)
   '25': '#800080'       # SMTP - Purple
   '53': '#00FFFF'       # DNS - Cyan
   '80': '#FFFFFF'       # HTTP - White
@@ -18,36 +24,39 @@ highlightedPorts:
   '135': '#00FFFF'      # RPC - Cyan
   '139': '#FFFF00'      # NetBIOS - Yellow
   '143': '#800080'      # IMAP - Purple
-  '443': '#008000'      # HTTPS - Green
+  '443': '#008000'      # HTTPS - Green (secure)
   '445': '#800080'      # SMB - Purple
   '993': '#FFFF00'      # IMAPS - Yellow
   '995': '#FFFF00'      # POP3S - Yellow
-  '3389': '#FF0000'     # RDP - Red
+  '3389': '#FF0000'     # RDP - Red (high risk)
 
-# Colors for TCP/UDP states: object mapping states to color names
+# Default colors for connection states
+# Used when a port isn't in the highlightedPorts list above
 colors:
   tcp:
-    listening: 'green'
-    established: 'yellow'
-    close_wait: 'red'
-    time_wait: 'magenta'
-    other: 'white'
-  udp: 'cyan'
+    listening: 'green'      # Server waiting for connections
+    established: 'yellow'   # Active connection
+    close_wait: 'red'       # Connection closing
+    time_wait: 'magenta'    # Cleanup phase after close
+    other: 'white'          # Any other TCP state
+  udp: 'cyan'               # All UDP connections (UDP is stateless)
 
-# Columns to display: object with column names as keys and true/false to enable
+# Which columns to show in the output table
+# Set to false to hide a column
 columns:
-  Proto: true
-  Local: true
-  Port: true
-  Foreign: true
-  State: true
-  PID: true
-  Process: true
-  Geo: true
-  Bytes: true
-  Age: true
+  Proto: true      # Protocol (TCP or UDP)
+  Local: true      # Local IP address and port
+  Port: true       # Local port number only
+  Foreign: true    # Remote IP address and port
+  State: true      # Connection state (TCP only)
+  PID: true        # Process ID
+  Process: true    # Process/application name
+  Geo: true        # Country code of remote IP
+  Bytes: true      # Data transferred (placeholder - always shows 0B)
+  Age: true        # How long the connection has been active
 
-# Column widths: object mapping column names to widths
+# Width of each column in characters
+# Adjust these if text is getting cut off or there's too much space
 columnWidths:
   Proto: 5
   Local: 22
@@ -55,10 +64,91 @@ columnWidths:
   Foreign: 22
   State: 12
   PID: 6
-  Process: 25
+  Process: 30
   Geo: 8
   Bytes: 8
   Age: 6
 
-# Column order: array specifying the order of columns (must match columns array)
+# Truncate text that exceeds column width
+# If true, text will be cut to (columnWidth - 2) characters and "..." will be appended
+# If false, text may overflow into adjacent columns
+truncateOverflow: true
+
+# Order of columns from left to right
+# Must match the column names defined in the 'columns' section above
 columnOrder: ['Proto', 'Local', 'Port', 'Foreign', 'State', 'PID', 'Process', 'Geo', 'Bytes', 'Age']
+
+# Connection statistics and monitoring features
+monitoring:
+  # Show connection statistics (total TCP/UDP connections, bandwidth usage)
+  showStats: true
+  
+  # Show top talkers (processes/IPs with most connections or bandwidth)
+  showTopTalkers: true
+  topTalkersCount: 5  # How many top talkers to display
+  
+  # Track historical data for graphs
+  trackHistory: true
+  historyRetention: 604800000  # How long to keep history in ms (default: 7 days)
+
+# Alert system with webhook support
+alerts:
+  enabled: false
+  
+  # Webhooks to send alerts to (supports Discord, Slack, generic JSON)
+  webhooks: []
+    # - url: "https://discord.com/api/webhooks/..."
+    # - url: "https://hooks.slack.com/services/..."
+  
+  # Alert conditions
+  conditions:
+    # Alert on suspicious ports
+    suspiciousPorts: [23, 135, 139, 445, 3389]
+    
+    # Alert on new foreign connections
+    newForeignConnections: true
+    
+    # Alert when connection count exceeds threshold
+    maxConnections: 500
+    
+    # Alert on high bandwidth usage (bytes per second)
+    maxBandwidth: 10485760  # 10 MB/s
+
+# IP filtering
+ipFiltering:
+  enabled: false
+  
+  # Allowlist - only show these IPs (empty = show all)
+  allowlist: []
+  
+  # Blocklist - hide these IPs
+  blocklist: []
+
+# Connection filtering
+connectionFiltering:
+  enabled: false
+  
+  # Filter by protocol
+  protocols: []  # ['TCP', 'UDP'] or leave empty for all
+  
+  # Filter by port ranges
+  ports: []  # [80, 443, 8080] or leave empty for all
+  
+  # Filter by process names
+  processes: []  # ['chrome.exe', 'firefox.exe'] or leave empty for all
+  
+  # Filter by country codes
+  countries: []  # ['US', 'GB', 'CA'] or leave empty for all
+
+# Dashboard settings
+dashboard:
+  enabled: false  # Enable Electron dashboard
+  port: 3000  # Port for the internal web server
+  
+  # Export settings
+  export:
+    enabled: true
+    formats: ['csv', 'json']  # Available export formats
+    autoExport: false  # Automatically export at intervals
+    exportInterval: 3600000  # Auto-export interval in ms (default: 1 hour)
+    exportPath: './exports'  # Where to save exports
