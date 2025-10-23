@@ -8,22 +8,16 @@ import { promisify } from 'util';
 
 const dnsReverse = promisify(dns.reverse);
 const config = yaml.load(fs.readFileSync('config.yml', 'utf8'));
+
+// Caches and storage
 const seenConnections = new Map();
 const connectionStats = new Map();
-const bandwidth = new Map();
 const historicalData = [];
 const dnsCache = new Map();
-const portKnockDetector = new Map();
+const geoCache = new Map();
+const processCache = new Map();
 
-// First run flag - load everything silently before showing interface
-let firstRun = true;
-let loadingProgress = {
-  total: 0,
-  current: 0,
-  phase: ''
-};
-
-// Global stats
+// Stats
 let stats = {
   totalTCP: 0,
   totalUDP: 0,
@@ -31,50 +25,33 @@ let stats = {
   timestamp: Date.now()
 };
 
-// Progress bar display
-function updateProgress(phase, current, total) {
-  if (!firstRun || config.dashboard?.enabled) return;
+let isFirstRun = true;
+let isScanning = false;
 
-  loadingProgress = { phase, current, total };
-  const percent = Math.floor((current / total) * 100);
-  const barLength = 30;
-  const filledLength = Math.floor(barLength * (current / total));
-  const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
-
-  // Clear line and move cursor to beginning
-  process.stdout.write('\r\x1b[K');
-  process.stdout.write(
-    chalk.yellow(`Loading... ${bar} ${percent}% `) +
-    chalk.cyan(`[${current}/${total}] `) +
-    chalk.white(phase)
-  );
-}
-
-// Converts a color name like 'red' or a hex value like '#ff0000' into a chalk color function.
-// This lets us use both predefined color names and custom hex colors from the config.
+// Utility: Get chalk color
 function getColor(colorName) {
-  if (colorName.startsWith('#')) {
+  if (colorName?.startsWith('#')) {
     return chalk.hex(colorName);
   }
-
   const colors = {
-    red: chalk.red,
-    magenta: chalk.magenta,
-    cyan: chalk.cyan,
-    yellowBright: chalk.yellowBright,
-    blueBright: chalk.blueBright,
-    greenBright: chalk.greenBright,
-    whiteBright: chalk.whiteBright,
-    green: chalk.green,
-    yellow: chalk.yellow,
-    white: chalk.white,
+    red: chalk.red, magenta: chalk.magenta, cyan: chalk.cyan,
+    yellowBright: chalk.yellowBright, blueBright: chalk.blueBright,
+    greenBright: chalk.greenBright, whiteBright: chalk.whiteBright,
+    green: chalk.green, yellow: chalk.yellow, white: chalk.white,
   };
-
   return colors[colorName] || chalk.white;
 }
 
-// Builds the header row that appears at the top of the output table.
-// Uses config settings to determine which columns to show and how wide they should be.
+// Utility: Format bytes
+function formatBytes(bytes) {
+  if (bytes === 0) return '0B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + sizes[i];
+}
+
+// Build header
 function buildHeader() {
   const enabledColumns = Object.keys(config.columns).filter(col => config.columns[col]);
   const columns = config.columnOrder
@@ -84,210 +61,13 @@ function buildHeader() {
 
   const headerParts = columns.map(col => {
     const width = widths[col] || 10;
-    return ['Bytes', 'Age'].includes(col)
-      ? col.padStart(width)
-      : col.padEnd(width);
+    return ['Bytes', 'Age'].includes(col) ? col.padStart(width) : col.padEnd(width);
   });
 
   return chalk.bold(headerParts.join(''));
 }
 
-// Format bytes for display
-function formatBytes(bytes) {
-  if (bytes === 0) return '0B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + sizes[i];
-}
-
-// Resolve IP to hostname using DNS
-async function resolveHostname(ip) {
-  if (!config.resolveDNS) return null;
-
-  // Check cache first
-  if (dnsCache.has(ip)) {
-    return dnsCache.get(ip);
-  }
-
-  // Skip local IPs
-  if (!ip || ip === '0.0.0.0' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
-    return null;
-  }
-
-  try {
-    const hostnames = await dnsReverse(ip);
-    const hostname = hostnames[0] || null;
-    dnsCache.set(ip, hostname);
-    return hostname;
-  } catch (error) {
-    dnsCache.set(ip, null);
-    return null;
-  }
-}
-
-// Detect if connection is through VPN
-function detectVPN(procName, foreign) {
-  const vpnProcesses = ['openvpn', 'wireguard', 'nordvpn', 'expressvpn', 'pia', 'protonvpn', 'tunnelbear', 'windscribe'];
-  const vpnPorts = [1194, 1723, 500, 4500, 51820];
-
-  const isVPNProcess = vpnProcesses.some(vpn => procName.toLowerCase().includes(vpn));
-  const isVPNPort = vpnPorts.some(port => foreign.includes(`:${port}`));
-
-  return isVPNProcess || isVPNPort;
-}
-
-// Detect port knocking attempts
-function detectPortKnock(ip, port) {
-  const now = Date.now();
-  const threshold = 5000; // 5 seconds window
-  const knockThreshold = 5; // 5 different ports in quick succession
-
-  if (!portKnockDetector.has(ip)) {
-    portKnockDetector.set(ip, []);
-  }
-
-  const knocks = portKnockDetector.get(ip);
-  knocks.push({ port, timestamp: now });
-
-  // Clean old knocks
-  const recentKnocks = knocks.filter(k => now - k.timestamp < threshold);
-  portKnockDetector.set(ip, recentKnocks);
-
-  // Check for knock pattern
-  const uniquePorts = new Set(recentKnocks.map(k => k.port));
-  if (uniquePorts.size >= knockThreshold) {
-    return true;
-  }
-
-  return false;
-}
-
-// Check if connection should be filtered
-function shouldFilterConnection(proto, port, procName, country, ip) {
-  if (!config.connectionFiltering?.enabled && !config.ipFiltering?.enabled) {
-    return false;
-  }
-
-  // IP filtering
-  if (config.ipFiltering?.enabled) {
-    if (config.ipFiltering.allowlist.length > 0) {
-      if (!config.ipFiltering.allowlist.includes(ip)) {
-        return true; // Not in allowlist, filter it
-      }
-    }
-    if (config.ipFiltering.blocklist.includes(ip)) {
-      return true; // In blocklist, filter it
-    }
-  }
-
-  // Connection filtering
-  if (config.connectionFiltering?.enabled) {
-    if (config.connectionFiltering.protocols.length > 0) {
-      if (!config.connectionFiltering.protocols.includes(proto)) {
-        return true;
-      }
-    }
-    if (config.connectionFiltering.ports.length > 0) {
-      if (!config.connectionFiltering.ports.includes(parseInt(port))) {
-        return true;
-      }
-    }
-    if (config.connectionFiltering.processes.length > 0) {
-      if (!config.connectionFiltering.processes.some(p => procName.toLowerCase().includes(p.toLowerCase()))) {
-        return true;
-      }
-    }
-    if (config.connectionFiltering.countries.length > 0) {
-      if (!config.connectionFiltering.countries.includes(country)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-// Send webhook alert
-async function sendAlert(alertType, data) {
-  if (!config.alerts?.enabled || !config.alerts.webhooks?.length) {
-    return;
-  }
-
-  for (const webhook of config.alerts.webhooks) {
-    try {
-      let payload;
-      const url = webhook.url || webhook;
-
-      // Detect webhook type and format accordingly
-      if (url.includes('discord.com')) {
-        payload = {
-          content: `**Alert: ${alertType}**\n\`\`\`\n${JSON.stringify(data, null, 2)}\n\`\`\``
-        };
-      } else if (url.includes('slack.com')) {
-        payload = {
-          text: `*Alert: ${alertType}*\n\`\`\`${JSON.stringify(data, null, 2)}\`\`\``
-        };
-      } else {
-        // Generic JSON webhook
-        payload = {
-          alertType,
-          timestamp: new Date().toISOString(),
-          data
-        };
-      }
-
-      await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    } catch (error) {
-      // Silently fail webhook errors
-    }
-  }
-}
-
-// Check alert conditions
-function checkAlerts(connections) {
-  if (!config.alerts?.enabled) return;
-
-  const conditions = config.alerts.conditions || {};
-
-  // Check connection count
-  if (conditions.maxConnections && connections.length > conditions.maxConnections) {
-    sendAlert('High Connection Count', {
-      current: connections.length,
-      threshold: conditions.maxConnections
-    });
-  }
-
-  // Check bandwidth
-  if (conditions.maxBandwidth && stats.totalBandwidth > conditions.maxBandwidth) {
-    sendAlert('High Bandwidth Usage', {
-      current: formatBytes(stats.totalBandwidth),
-      threshold: formatBytes(conditions.maxBandwidth)
-    });
-  }
-
-  // Check suspicious ports
-  if (conditions.suspiciousPorts?.length) {
-    connections.forEach(conn => {
-      const port = conn.port;
-      if (conditions.suspiciousPorts.includes(parseInt(port))) {
-        sendAlert('Suspicious Port Detected', {
-          port,
-          process: conn.procName,
-          foreign: conn.foreign
-        });
-      }
-    });
-  }
-}
-
-// Takes raw connection data and formats it into a nice colored line for display.
-// Applies different colors based on port highlights, TCP states, or UDP protocol.
-// Think of this as the painter that makes the output pretty and readable.
+// Format connection line
 function formatLine({ proto, local, foreign, state, pid, procName, geo, bytes, age, isVPN, isBlocked, hostname }) {
   proto = String(proto || '-');
   local = String(local || '-');
@@ -299,20 +79,9 @@ function formatLine({ proto, local, foreign, state, pid, procName, geo, bytes, a
   bytes = bytes || 0;
   age = age || 0;
 
-  // Add VPN indicator
-  if (isVPN) {
-    procName = `[VPN] ${procName}`;
-  }
-
-  // Add blocked indicator
-  if (isBlocked) {
-    state = `[!] ${state}`;
-  }
-
-  // Use hostname if available
-  if (hostname && config.resolveDNS) {
-    foreign = hostname;
-  }
+  if (isVPN) procName = `[VPN] ${procName}`;
+  if (isBlocked) state = `[!] ${state}`;
+  if (hostname && config.resolveDNS) foreign = hostname;
 
   let port = '-';
   if (local.includes(']:')) {
@@ -343,24 +112,15 @@ function formatLine({ proto, local, foreign, state, pid, procName, geo, bytes, a
   const textParts = columns.map(col => {
     let value = String(data[col] || '-');
     const width = widths[col] || 10;
-
-    // Truncate if enabled and value exceeds width
     if (config.truncateOverflow && value.length > width) {
       value = value.substring(0, width - 2) + '..';
     }
-
-    return ['Bytes', 'Age'].includes(col)
-      ? value.padStart(width)
-      : value.padEnd(width);
+    return ['Bytes', 'Age'].includes(col) ? value.padStart(width) : value.padEnd(width);
   });
 
   let text = textParts.join('');
 
-  // Highlight blocked connections in red
-  if (isBlocked) {
-    return chalk.red(text);
-  }
-
+  if (isBlocked) return chalk.red(text);
   if (config.highlightedPorts && config.highlightedPorts[port]) {
     return getColor(config.highlightedPorts[port])(text);
   }
@@ -368,82 +128,184 @@ function formatLine({ proto, local, foreign, state, pid, procName, geo, bytes, a
   if (proto === 'TCP') {
     const tcpColors = config.colors?.tcp || {};
     const stateLower = state.toLowerCase();
-
-    if (stateLower.includes('listening')) {
-      return getColor(tcpColors.listening || 'green')(text);
-    } else if (stateLower.includes('established')) {
-      return getColor(tcpColors.established || 'yellow')(text);
-    } else if (stateLower.includes('close_wait')) {
-      return getColor(tcpColors.close_wait || 'red')(text);
-    } else if (stateLower.includes('time_wait')) {
-      return getColor(tcpColors.time_wait || 'magenta')(text);
-    } else {
-      return getColor(tcpColors.other || 'white')(text);
-    }
+    if (stateLower.includes('listening')) return getColor(tcpColors.listening || 'green')(text);
+    if (stateLower.includes('established')) return getColor(tcpColors.established || 'yellow')(text);
+    if (stateLower.includes('close_wait')) return getColor(tcpColors.close_wait || 'red')(text);
+    if (stateLower.includes('time_wait')) return getColor(tcpColors.time_wait || 'magenta')(text);
+    return getColor(tcpColors.other || 'white')(text);
   }
 
-  if (proto === 'UDP') {
-    return getColor(config.colors?.udp || 'cyan')(text);
-  }
-
+  if (proto === 'UDP') return getColor(config.colors?.udp || 'cyan')(text);
   return text;
 }
 
-// Looks up what program is using a specific process ID.
-// Uses Windows' tasklist command to find the process name, returns 'Unknown' if it can't find it.
+// Get process name with caching
 async function getProcessName(pid) {
+  if (processCache.has(pid)) {
+    return processCache.get(pid);
+  }
+
   return new Promise(resolve => {
-    exec(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, (err, output) => {
+    exec(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { timeout: 2000 }, (err, output) => {
       if (err || !output.trim()) {
+        processCache.set(pid, 'Unknown');
         return resolve('Unknown');
       }
       const match = output.match(/^"(.+?)",/);
-      resolve(match ? match[1] : 'Unknown');
+      const name = match ? match[1] : 'Unknown';
+      processCache.set(pid, name);
+      resolve(name);
     });
   });
 }
 
-// Figures out where in the world an IP address is coming from.
-// Calls the ipinfo.io API to get the country code, or returns 'Local' for local addresses.
-async function getGeo(ip) {
-  try {
-    if (!ip || ip === '0.0.0.0' || ip === '127.0.0.1') {
-      return 'Local';
-    }
+// Batch get process names (parallel)
+async function batchGetProcessNames(pids) {
+  const uniquePids = [...new Set(pids)];
+  const promises = uniquePids.map(pid => getProcessName(pid));
+  return Promise.all(promises);
+}
 
-    const res = await fetch(`https://ipinfo.io/${ip}/json?token=${config.ipToken}`);
+// Get geolocation with caching
+async function getGeo(ip) {
+  if (!ip || ip === '0.0.0.0' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+    return 'Local';
+  }
+
+  if (geoCache.has(ip)) {
+    return geoCache.get(ip);
+  }
+
+  try {
+    const res = await fetch(`https://ipinfo.io/${ip}/json?token=${config.ipToken}`, { timeout: 5000 });
     if (!res.ok) {
+      geoCache.set(ip, 'Unknown');
       return 'Unknown';
     }
 
     const data = await res.json();
-    return data.country || 'Unknown';
+    const city = data.city || '';
+    const region = data.region || '';
+    const country = data.country || '';
+    const org = data.org || '';
+
+    const parts = [];
+    if (city) parts.push(city);
+    if (region && region !== city) parts.push(region);
+    if (country) parts.push(country);
+
+    const location = parts.join(', ') || 'Unknown';
+
+    const geoData = (data.city || data.region || data.org) ? {
+      display: location,
+      city, region, country, org,
+      loc: data.loc || null
+    } : location;
+
+    geoCache.set(ip, geoData);
+    return geoData;
   } catch (error) {
+    geoCache.set(ip, 'Unknown');
     return 'Unknown';
   }
 }
 
-// Get bandwidth statistics for a connection
-function getBandwidth(key, bytesIn, bytesOut) {
-  const now = Date.now();
-  const prevData = bandwidth.get(key) || { bytesIn: 0, bytesOut: 0, timestamp: now };
+// Resolve hostname with caching
+async function resolveHostname(ip) {
+  if (!config.resolveDNS) return null;
+  if (!ip || ip === '0.0.0.0' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+    return null;
+  }
 
-  const timeDiff = (now - prevData.timestamp) / 1000; // seconds
-  const inDiff = Math.max(0, bytesIn - prevData.bytesIn);
-  const outDiff = Math.max(0, bytesOut - prevData.bytesOut);
+  if (dnsCache.has(ip)) {
+    return dnsCache.get(ip);
+  }
 
-  bandwidth.set(key, { bytesIn, bytesOut, timestamp: now });
-
-  return {
-    totalBytes: bytesIn + bytesOut,
-    bytesPerSec: timeDiff > 0 ? (inDiff + outDiff) / timeDiff : 0
-  };
+  try {
+    const hostnames = await dnsReverse(ip);
+    const hostname = hostnames[0] || null;
+    dnsCache.set(ip, hostname);
+    return hostname;
+  } catch (error) {
+    dnsCache.set(ip, null);
+    return null;
+  }
 }
 
-// Display connection statistics
+// VPN detection
+function detectVPN(procName, foreign) {
+  const vpnProcesses = ['openvpn', 'wireguard', 'nordvpn', 'expressvpn', 'pia', 'protonvpn'];
+  const vpnPorts = [1194, 1723, 500, 4500, 51820];
+  const isVPNProcess = vpnProcesses.some(vpn => procName.toLowerCase().includes(vpn));
+  const isVPNPort = vpnPorts.some(port => foreign.includes(`:${port}`));
+  return isVPNProcess || isVPNPort;
+}
+
+// Check if should filter
+function shouldFilterConnection(proto, port, procName, country, ip) {
+  if (!config.connectionFiltering?.enabled && !config.ipFiltering?.enabled) return false;
+
+  if (config.ipFiltering?.enabled) {
+    if (config.ipFiltering.allowlist.length > 0 && !config.ipFiltering.allowlist.includes(ip)) {
+      return true;
+    }
+    if (config.ipFiltering.blocklist.includes(ip)) return true;
+  }
+
+  if (config.connectionFiltering?.enabled) {
+    if (config.connectionFiltering.protocols.length > 0 && !config.connectionFiltering.protocols.includes(proto)) {
+      return true;
+    }
+    if (config.connectionFiltering.ports.length > 0 && !config.connectionFiltering.ports.includes(parseInt(port))) {
+      return true;
+    }
+    if (config.connectionFiltering.processes.length > 0) {
+      if (!config.connectionFiltering.processes.some(p => procName.toLowerCase().includes(p.toLowerCase()))) {
+        return true;
+      }
+    }
+    if (config.connectionFiltering.countries.length > 0 && !config.connectionFiltering.countries.includes(country)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Send webhook alert
+async function sendAlert(alertType, data) {
+  if (!config.alerts?.enabled || !config.alerts.webhooks?.length) return;
+
+  const promises = config.alerts.webhooks.map(async webhook => {
+    try {
+      const url = webhook.url || webhook;
+      let payload;
+
+      if (url.includes('discord.com')) {
+        payload = { content: `**Alert: ${alertType}**\n\`\`\`\n${JSON.stringify(data, null, 2)}\n\`\`\`` };
+      } else if (url.includes('slack.com')) {
+        payload = { text: `*Alert: ${alertType}*\n\`\`\`${JSON.stringify(data, null, 2)}\`\`\`` };
+      } else {
+        payload = { alertType, timestamp: new Date().toISOString(), data };
+      }
+
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        timeout: 5000
+      });
+    } catch (error) {
+      // Silent fail
+    }
+  });
+
+  await Promise.allSettled(promises);
+}
+
+// Display stats
 function displayStats() {
   if (!config.monitoring?.showStats) return;
-
   const statLine = chalk.bold.cyan(
     `Stats: TCP=${stats.totalTCP} | UDP=${stats.totalUDP} | Total=${stats.totalTCP + stats.totalUDP} | Bandwidth=${formatBytes(stats.totalBandwidth)}/s`
   );
@@ -455,9 +317,8 @@ function displayTopTalkers() {
   if (!config.monitoring?.showTopTalkers) return;
 
   const count = config.monitoring.topTalkersCount || 5;
-
-  // Aggregate by process
   const processTalkers = new Map();
+
   for (const [key, data] of connectionStats) {
     const proc = data.procName;
     if (!processTalkers.has(proc)) {
@@ -468,7 +329,6 @@ function displayTopTalkers() {
     current.bytes += data.bytes || 0;
   }
 
-  // Sort by connections
   const topTalkers = Array.from(processTalkers.entries())
     .sort((a, b) => b[1].connections - a[1].connections)
     .slice(0, count)
@@ -480,31 +340,7 @@ function displayTopTalkers() {
   }
 }
 
-// Save historical data
-function saveHistoricalData(connections) {
-  if (!config.monitoring?.trackHistory) return;
-
-  const dataPoint = {
-    timestamp: Date.now(),
-    tcpCount: stats.totalTCP,
-    udpCount: stats.totalUDP,
-    bandwidth: stats.totalBandwidth,
-    topProcesses: Array.from(connectionStats.entries())
-      .map(([key, data]) => ({ process: data.procName, connections: 1 }))
-      .slice(0, 10)
-  };
-
-  historicalData.push(dataPoint);
-
-  // Clean old data based on retention policy
-  const retention = config.monitoring.historyRetention || 604800000; // 7 days
-  const cutoff = Date.now() - retention;
-  while (historicalData.length > 0 && historicalData[0].timestamp < cutoff) {
-    historicalData.shift();
-  }
-}
-
-// Send data to dashboard if enabled
+// Send to dashboard
 async function sendToDashboard(connections) {
   if (!config.dashboard?.enabled) return;
 
@@ -512,40 +348,34 @@ async function sendToDashboard(connections) {
     await fetch(`http://localhost:${config.dashboard.port}/api/update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ connections })
+      body: JSON.stringify({ connections }),
+      timeout: 3000
     });
   } catch (error) {
-    // Silently fail if dashboard is not running
+    // Silent fail
   }
 }
 
-// The main function that grabs all active network connections from your system.
-// Runs PowerShell commands to get TCP and UDP connections, then enriches each one
-// with process names, geolocation, and age tracking before displaying them.
+// Main connection getter - OPTIMIZED
 async function getConnections() {
-  // Use netstat instead of PowerShell cmdlets (much faster)
-  const execOptions = { timeout: 10000, maxBuffer: 10 * 1024 * 1024 };
+  if (isScanning) return; // Prevent overlapping scans
+  isScanning = true;
 
-  if (firstRun) {
-    updateProgress('Fetching connections...', 1, 5);
-  }
+  try {
+    const execOptions = { timeout: 10000, maxBuffer: 10 * 1024 * 1024 };
 
-  exec('netstat -ano', execOptions, async (err, stdout) => {
-    if (err) {
-      if (!config.dashboard?.enabled) {
-        console.error(chalk.red('Error fetching connections. Retrying...'));
-      }
-      return;
-    }
+    // Get netstat output
+    const stdout = await new Promise((resolve, reject) => {
+      exec('netstat -ano', execOptions, (err, stdout) => {
+        if (err) reject(err);
+        else resolve(stdout);
+      });
+    });
 
-    if (firstRun) {
-      updateProgress('Parsing connections...', 2, 5);
-    }
-
+    // Parse connections
     const allConnections = [];
     const lines = stdout.split('\n');
 
-    // Parse netstat output
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('Active') || trimmed.startsWith('Proto')) continue;
@@ -563,174 +393,144 @@ async function getConnections() {
 
       if (!local || !pid) continue;
 
-      // Parse addresses
       const localParts = local.split(':');
       const foreignParts = foreign.split(':');
 
-      const LocalAddress = localParts.slice(0, -1).join(':') || '0.0.0.0';
-      const LocalPort = localParts[localParts.length - 1];
-      const RemoteAddress = foreignParts.length > 1 ? foreignParts.slice(0, -1).join(':') : null;
-      const RemotePort = foreignParts.length > 1 ? foreignParts[foreignParts.length - 1] : null;
-
       allConnections.push({
-        State: proto === 'TCP' ? state : null,
-        LocalAddress,
-        LocalPort: parseInt(LocalPort) || 0,
-        RemoteAddress,
-        RemotePort: RemotePort ? parseInt(RemotePort) : null,
-        OwningProcess: parseInt(pid) || 0
+        proto,
+        state: proto === 'TCP' ? state : '-',
+        local,
+        foreign: foreignParts.length > 1 ? foreign : '-',
+        localAddress: localParts.slice(0, -1).join(':') || '0.0.0.0',
+        localPort: parseInt(localParts[localParts.length - 1]) || 0,
+        foreignIp: foreignParts.length > 1 ? foreignParts.slice(0, -1).join(':') : null,
+        foreignPort: foreignParts.length > 1 ? foreignParts[foreignParts.length - 1] : null,
+        pid: parseInt(pid) || 0
       });
     }
 
+    // Reset stats
+    stats = { totalTCP: 0, totalUDP: 0, totalBandwidth: 0, timestamp: Date.now() };
+
+    // Batch process: Get all unique PIDs and IPs first
+    const uniquePids = [...new Set(allConnections.map(c => c.pid))];
+    const uniqueIps = [...new Set(allConnections.map(c => c.foreignIp).filter(Boolean))];
+
+    // Batch fetch process names (parallel)
+    await Promise.all(uniquePids.map(pid => getProcessName(pid)));
+
+    // Batch fetch geo data (parallel, but limit to 10 at a time to avoid rate limits)
+    const uncachedIps = uniqueIps.filter(ip => !geoCache.has(ip) && ip !== '0.0.0.0');
+    const batchSize = 10;
+    for (let i = 0; i < uncachedIps.length; i += batchSize) {
+      const batch = uncachedIps.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(ip => getGeo(ip)));
+    }
+
+    // Process connections
     const displayedConnections = [];
 
-    if (firstRun) {
-      updateProgress('Processing connections...', 3, 5);
-    }
-
-    // Reset stats
-    stats = {
-      totalTCP: 0,
-      totalUDP: 0,
-      totalBandwidth: 0,
-      timestamp: Date.now()
-    };
-
-    // Clear screen and show header (only if not first run and dashboard is not enabled)
-    if (!config.dashboard?.enabled && !firstRun) {
-      console.clear();
-      console.log(buildHeader());
-    }
-
-    const totalToProcess = allConnections.length;
-    let processedCount = 0;
-
     for (const conn of allConnections) {
-      processedCount++;
-
-      // Update progress during first run
-      if (firstRun && processedCount % Math.max(1, Math.floor(totalToProcess / 20)) === 0) {
-        const subPercent = Math.floor((processedCount / totalToProcess) * 100);
-        updateProgress(`Resolving data... (${subPercent}% of connections)`, 4, 5);
-      }
       try {
-        const proto = conn.State ? 'TCP' : 'UDP';
-        const local = conn.LocalAddress + ':' + conn.LocalPort;
-        const foreign = conn.RemoteAddress
-          ? conn.RemoteAddress + ':' + conn.RemotePort
-          : '-';
-        const state = conn.State || '-';
-        const pid = String(conn.OwningProcess || '-');
+        const key = `${conn.proto}-${conn.local}-${conn.foreign}-${conn.pid}`;
 
-        const key = `${proto}-${local}-${foreign}-${pid}`;
         if (!seenConnections.has(key)) {
           seenConnections.set(key, Date.now());
-
-          // Check for new foreign connection alert (skip on first run)
-          if (!firstRun && config.alerts?.enabled && config.alerts.conditions?.newForeignConnections && foreign !== '-') {
-            sendAlert('New Foreign Connection', { proto, foreign, pid });
+          if (!isFirstRun && config.alerts?.enabled && config.alerts.conditions?.newForeignConnections && conn.foreign !== '-') {
+            sendAlert('New Foreign Connection', { proto: conn.proto, foreign: conn.foreign, pid: conn.pid });
           }
         }
+
         const age = Math.floor((Date.now() - seenConnections.get(key)) / 1000);
+        const procName = processCache.get(conn.pid) || 'Unknown';
+        const geoData = conn.foreignIp ? (geoCache.get(conn.foreignIp) || 'Unknown') : 'Local';
+        const geo = typeof geoData === 'object' ? geoData.display : geoData;
+        const geoFull = typeof geoData === 'object' ? geoData : null;
+        const hostname = conn.foreignIp && config.resolveDNS ? (dnsCache.get(conn.foreignIp) || null) : null;
 
-        const procName = await getProcessName(pid);
-        const foreignIp = foreign !== '-' ? foreign.split(':')[0] : null;
-        const foreignPort = foreign !== '-' ? foreign.split(':')[1] : null;
-        const geo = foreignIp ? await getGeo(foreignIp) : 'Local';
-        const hostname = foreignIp ? await resolveHostname(foreignIp) : null;
-
-        // Bandwidth tracking (simulated for now, real tracking would require performance counters)
-        const bw = getBandwidth(key, 0, 0);
-        const bytes = bw.totalBytes;
-
-        // Update stats
-        if (proto === 'TCP') stats.totalTCP++;
+        if (conn.proto === 'TCP') stats.totalTCP++;
         else stats.totalUDP++;
-        stats.totalBandwidth += bw.bytesPerSec;
 
-        // VPN detection
-        const isVPN = detectVPN(procName, foreign);
-
-        // Port knock detection (skip on first run)
-        if (!firstRun && foreignIp && detectPortKnock(foreignIp, conn.LocalPort)) {
-          console.log(chalk.red.bold(`[!] Port knock detected from ${foreignIp}`));
-        }
-
-        // Check if should be blocked (flagged)
+        const isVPN = detectVPN(procName, conn.foreign);
         const suspiciousPorts = config.alerts?.conditions?.suspiciousPorts || [];
-        const isBlocked = suspiciousPorts.includes(parseInt(conn.LocalPort));
+        const isBlocked = suspiciousPorts.includes(conn.localPort);
 
-        // Store connection data
-        connectionStats.set(key, { procName, bytes, proto });
+        connectionStats.set(key, { procName, bytes: 0, proto: conn.proto });
 
-        // Check filtering
-        const localPort = conn.LocalPort;
-        if (shouldFilterConnection(proto, localPort, procName, geo, foreignIp)) {
+        if (shouldFilterConnection(conn.proto, conn.localPort, procName, geo, conn.foreignIp)) {
           continue;
         }
 
         const connectionData = {
-          proto, local, foreign, state, pid, procName, geo, bytes, age, isVPN, isBlocked, hostname
+          proto: conn.proto,
+          local: conn.local,
+          foreign: conn.foreign,
+          state: conn.state,
+          pid: String(conn.pid),
+          procName,
+          geo,
+          bytes: 0,
+          age,
+          isVPN,
+          isBlocked,
+          hostname,
+          port: conn.localPort,
+          geoFull
         };
 
         displayedConnections.push(connectionData);
 
-        // Only display if not first run
-        if (!firstRun) {
+        if (!isFirstRun && !config.dashboard?.enabled) {
           console.log(formatLine(connectionData));
         }
       } catch (connError) {
-        // Silently skip connection errors
+        // Skip connection errors
       }
     }
 
-    // Display stats and top talkers at the bottom (only if not first run and dashboard is not enabled)
-    if (!config.dashboard?.enabled && !firstRun) {
+    // Display output
+    if (!isFirstRun && !config.dashboard?.enabled) {
+      console.clear();
+      console.log(buildHeader());
+      displayedConnections.forEach(conn => console.log(formatLine(conn)));
       displayStats();
       displayTopTalkers();
     }
 
-    // Check alerts (skip on first run)
-    if (!firstRun) {
-      checkAlerts(displayedConnections);
-    }
-
-    // Save historical data
-    saveHistoricalData(displayedConnections);
-
-    // Send to dashboard if enabled
+    // Send to dashboard
     if (config.dashboard?.enabled) {
-      sendToDashboard(displayedConnections);
+      await sendToDashboard(displayedConnections);
     }
 
-    // After first run completes, clear screen and enable normal display
-    if (firstRun) {
+    // First run complete
+    if (isFirstRun) {
       if (!config.dashboard?.enabled) {
-        updateProgress('Complete!', 5, 5);
-        // Small delay to show 100% before clearing
-        await new Promise(resolve => setTimeout(resolve, 300));
-        console.log('\n' + chalk.green.bold('✓ Ready! Monitoring connections in real-time...\n'));
-        await new Promise(resolve => setTimeout(resolve, 800));
+        console.clear();
+        console.log(chalk.green.bold('✓ Ready! Monitoring connections in real-time...\n'));
       }
-      firstRun = false;
+      isFirstRun = false;
     }
-  });
+
+  } catch (error) {
+    if (!isFirstRun) {
+      console.error(chalk.red('Error fetching connections:'), error.message);
+    }
+  } finally {
+    isScanning = false;
+  }
 }
 
-// Initialize
-if (!config.dashboard?.enabled) {
-  console.clear();
-  console.log(chalk.cyan('⚡ Connections Monitor') + chalk.gray(' - Loading...'));
-  updateProgress('Starting...', 0, 5);
+// Start monitoring
+console.clear();
+if (config.dashboard?.enabled) {
+  console.log(chalk.cyan.bold('⚡ Starting dashboard scanner...\n'));
 } else {
-  console.log(chalk.cyan('⚡ Connections Monitor') + chalk.gray(' - Dashboard Mode'));
-  console.log(`  Server: ${chalk.green(`http://localhost:${config.dashboard.port || 3000}`)}`);
-  console.log(chalk.gray('  Data streaming in real-time...\n'));
+  console.log(chalk.cyan.bold('⚡ Connections Monitor\n'));
+  console.log(chalk.yellow('Loading initial data...'));
 }
 
-// Run first scan immediately to load data
+// Run first scan
 getConnections();
 
-// Keeps the display fresh by calling getConnections() every few seconds.
-// The refresh rate comes from your config file (default is 2 seconds).
+// Set up interval
 setInterval(getConnections, config.refreshInterval || 2000);
